@@ -32,6 +32,9 @@ zectrix_today.jpg
 # 配置文件（含敏感信息，首次运行自动生成）
 config.json
 
+# Claude
+.claude/
+
 # 编辑器
 .vscode/
 .idea/
