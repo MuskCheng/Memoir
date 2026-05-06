@@ -1,0 +1,94 @@
+version: "3.9"
+
+services:
+  # ─── AI 推理引擎 ──────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: memoir-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ${PHOTO_DIR:-./photos}:/photos:ro
+    environment:
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_KEEP_ALIVE=24h
+    # 启用 NVIDIA GPU 加速（可选）：
+    # 1. 安装 NVIDIA Container Toolkit
+    # 2. 取消下面 deploy 部分的注释
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - memoir_net
+
+  # ─── 照片推送系统 ──────────────────────────────────────────────
+  # config.json 可选：首次运行自动生成，或通过环境变量覆盖配置
+  memoir:
+    build: .
+    image: muskcheng/memoir:latest
+    container_name: memoir
+    restart: "no"
+    volumes:
+      - ${PHOTO_DIR:-./photos}:/photos:ro
+      - ${DATA_DIR:-./data}:/data
+      - ${CONFIG_FILE:-./config.json}:/app/config.json
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PHOTO_DIR=/photos
+      - DATA_DIR=/data
+      - API_KEY=${API_KEY:-}
+      - DEVICE_MAC=${DEVICE_MAC:-}
+      - TZ=Asia/Shanghai
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - memoir_net
+    profiles:
+      - cli
+
+  # ─── Web 管理后台 ──────────────────────────────────────────────
+  webui:
+    build: .
+    image: muskcheng/memoir:latest
+    container_name: memoir-webui
+    restart: unless-stopped
+    ports:
+      - "${WEBUI_PORT:-5000}:5000"
+    volumes:
+      - ${PHOTO_DIR:-./photos}:/photos:ro
+      - ${DATA_DIR:-./data}:/data
+      - ${CONFIG_FILE:-./config.json}:/app/config.json
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PHOTO_DIR=/photos
+      - DATA_DIR=/data
+      - API_KEY=${API_KEY:-}
+      - DEVICE_MAC=${DEVICE_MAC:-}
+      - WEBUI_PORT=5000
+      - TZ=Asia/Shanghai
+    command: ["python3", "webui/app.py"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - memoir_net
+
+volumes:
+  ollama_data:
+
+networks:
+  memoir_net:
+    driver: bridge

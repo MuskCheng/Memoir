@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# 运行时生成的数据
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# 索引和已推送记录（本地数据，非源码）
+zectrix_photo_index.txt
+zectrix_shown.txt
+
+# 临时输出文件
+zectrix_today.jpg
+
+# 字体文件（用户自行下载）
+*.ttf
+*.otf
+
+# Docker
+.env
+
+# 配置文件（含敏感信息，首次运行自动生成）
+config.json
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini

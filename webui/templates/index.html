@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memoir 管理后台</title>
+<style>
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --border: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #3b82f6;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+.layout { display: flex; min-height: 100vh; }
+
+/* 侧边栏 */
+.sidebar {
+  width: 220px;
+  background: var(--card);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  flex-shrink: 0;
+}
+.logo { padding: 0 20px 24px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.logo h1 { font-size: 16px; font-weight: 700; }
+.logo p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px; cursor: pointer;
+  color: var(--muted); font-size: 14px;
+  transition: all 0.2s; border-left: 3px solid transparent;
+}
+.nav-item:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+.nav-item.active { background: rgba(59,130,246,0.1); color: var(--accent); border-left-color: var(--accent); }
+
+/* 主内容 */
+.main { flex: 1; padding: 24px 32px; overflow-y: auto; }
+.page { display: none; }
+.page.active { display: block; }
+.header { margin-bottom: 24px; }
+.header h2 { font-size: 20px; font-weight: 600; }
+.header p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+/* 卡片网格 */
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px; transition: border-color 0.2s;
+}
+.card:hover { border-color: var(--accent); }
+.card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.card .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+.card .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* 表单 */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.form-group input, .form-group select {
+  width: 100%; padding: 8px 12px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: 14px;
+  outline: none; transition: border-color 0.2s;
+}
+.form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* 按钮 */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px; border: none;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: #2563eb; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-green:hover { background: #16a34a; }
+.btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-ghost:hover { border-color: var(--accent); }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { background: #dc2626; }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 日志 */
+.log-container {
+  background: #000; border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px;
+  font-family: "Cascadia Code", "Fira Code", monospace;
+  font-size: 12px; line-height: 1.6;
+  max-height: 500px; overflow-y: auto; color: #a8b2c1;
+}
+.log-line { white-space: pre-wrap; word-break: break-all; }
+
+/* 操作按钮组 */
+.action-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.action-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 14px; display: flex;
+  justify-content: space-between; align-items: center;
+}
+.action-card .info h4 { font-size: 13px; }
+.action-card .info p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* 定时任务 */
+.task-list { display: flex; flex-direction: column; gap: 8px; }
+.task-item {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px;
+  transition: border-color 0.2s;
+}
+.task-item:hover { border-color: var(--accent); }
+.task-item .icon { font-size: 20px; width: 36px; text-align: center; }
+.task-item .info { flex: 1; }
+.task-item .info h4 { font-size: 13px; font-weight: 600; }
+.task-item .info p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.task-item .info .schedule-badge {
+  display: inline-block; font-size: 10px;
+  background: rgba(59,130,246,0.12); color: var(--accent);
+  padding: 1px 6px; border-radius: 3px; margin-top: 4px;
+}
+.task-item .actions { display: flex; gap: 6px; align-items: center; }
+.task-empty { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+
+/* 开关 */
+.toggle {
+  width: 36px; height: 20px; border-radius: 10px;
+  background: var(--border); cursor: pointer; position: relative;
+  transition: background 0.2s; border: none; flex-shrink: 0;
+}
+.toggle.on { background: var(--green); }
+.toggle::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transition: transform 0.2s;
+}
+.toggle.on::after { transform: translateX(16px); }
+
+/* 模态框 */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 50; display: none; align-items: center; justify-content: center;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 24px; width: 90%; max-width: 520px;
+  max-height: 90vh; overflow-y: auto;
+}
+.modal h3 { font-size: 16px; margin-bottom: 16px; }
+.modal .form-group { margin-bottom: 12px; }
+.modal .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal .btn-bar { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+/* 实时进度 */
+.progress-section { margin-bottom: 24px; }
+.progress-bar-bg { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin: 8px 0; }
+.progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 4px; transition: width 0.5s ease; width: 0%; }
+.progress-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 12px; }
+.progress-stat { text-align: center; }
+.progress-stat .num { font-size: 18px; font-weight: 700; }
+.progress-stat .lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.progress-log { max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 11px; color: var(--muted); margin-top: 8px; background: #000; border-radius: 6px; padding: 8px; display: none; }
+.action-card .info p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* 模型选择 */
+.model-tag {
+  display: inline-block; padding: 2px 8px;
+  background: rgba(59,130,246,0.15); color: var(--accent);
+  border-radius: 4px; font-size: 11px; margin: 2px;
+  cursor: pointer; border: 1px solid transparent;
+}
+.model-tag.active { border-color: var(--accent); background: rgba(59,130,246,0.25); }
+.model-tag:hover { border-color: var(--accent); }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  padding: 12px 20px; border-radius: 8px;
+  font-size: 13px; z-index: 100; display: none;
+  animation: slideIn 0.3s ease;
+}
+.toast.success { background: var(--green); color: #fff; }
+.toast.error { background: var(--red); color: #fff; }
+@keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* Loading */
+.loading { text-align: center; padding: 40px; color: var(--muted); }
+.spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main { padding: 16px; }
+  .form-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- 侧边栏 -->
+<div class="sidebar">
+  <div class="logo">
+    <h1>📸 Memoir</h1>
+    <p>ZecTrix Note4 管理后台</p>
+  </div>
+  <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">📊 面板</div>
+  <div class="nav-item" data-page="health" onclick="switchPage('health');loadHealth();">🩺 健康检查</div>
+  <div class="nav-item" data-page="tasks" onclick="switchPage('tasks');loadTasks();">⏰ 定时任务</div>
+  <div class="nav-item" data-page="config" onclick="switchPage('config');loadConfig();">⚙️ 配置</div>
+  <div class="nav-item" data-page="logs" onclick="switchPage('logs');loadLogs();">📋 日志</div>
+  <div class="nav-item" data-page="gallery" onclick="switchPage('gallery');loadGallery();">🖼️ 已评分</div>
+  <div class="nav-item" data-page="actions" onclick="switchPage('actions')">🔧 操作</div>
+</div>
+
+<!-- 初始化引导（首次启动时显示） -->
+<div id="setup-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:999;padding:40px;overflow-y:auto;">
+  <div style="max-width:600px;margin:40px auto;">
+    <h2 style="margin-bottom:8px;">🚀 欢迎使用 Memoir</h2>
+    <p style="color:var(--muted);margin-bottom:24px;">首次启动，请完成以下初始化配置</p>
+    
+    <div id="setup-photo-section" class="card" style="padding:16px;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h4 style="margin:0;">📸 照片目录</h4>
+          <p style="color:var(--muted);font-size:12px;margin:4px 0 0;" id="setup-photo-hint">自动检测中...</p>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <input id="setup-photo-dir" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;" placeholder="选择照片目录...">
+        <button class="btn btn-ghost btn-sm" onclick="setupAutoDetect()">自动检测</button>
+      </div>
+    </div>
+    
+    <div id="setup-index-section" class="card" style="padding:16px;margin-bottom:16px;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="setup-build-index" checked style="width:18px;height:18px;">
+        <div>
+          <h4 style="margin:0;">📑 建立照片索引</h4>
+          <p style="color:var(--muted);font-size:12px;margin:4px 0 0;">扫描照片目录，生成索引文件</p>
+        </div>
+      </label>
+    </div>
+    
+    <div id="setup-tasks-section" class="card" style="padding:16px;margin-bottom:24px;">
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="setup-create-tasks" checked style="width:18px;height:18px;">
+        <div>
+          <h4 style="margin:0;">⏰ 创建定时任务</h4>
+          <p style="color:var(--muted);font-size:12px;margin:4px 0 0;">
+            每天凌晨3点自动评分 | 每天早8点自动推送
+          </p>
+        </div>
+      </label>
+    </div>
+    
+    <div id="setup-errors" style="color:var(--red);margin-bottom:12px;display:none;"></div>
+    <div id="setup-progress" style="display:none;margin-bottom:12px;">
+      <div style="color:var(--muted);font-size:13px;" id="setup-progress-text">处理中...</div>
+    </div>
+    
+    <button id="setup-btn" class="btn btn-green" style="width:100%;padding:12px;font-size:15px;" onclick="setupApply()">
+      ✅ 一键初始化
+    </button>
+  </div>
+</div>
+
+<script>
+// 初始化引导逻辑
+function checkSetupNeeded() {
+  fetch('/api/setup/status')
+    .then(r => r.json())
+    .then(data => {
+      if (data.need_setup) {
+        document.getElementById('setup-overlay').style.display = 'block';
+        document.getElementById('setup-photo-dir').value = data.photo_dir || '';
+        document.getElementById('setup-photo-hint').textContent = 
+          '需要配置: ' + data.reasons.join(', ');
+      }
+    })
+    .catch(() => {});
+}
+
+function setupAutoDetect() {
+  document.getElementById('setup-photo-hint').textContent = '检测中...';
+  fetch('/api/setup/status')
+    .then(r => r.json())
+    .then(data => {
+      if (data.photo_dir) {
+        document.getElementById('setup-photo-dir').value = data.photo_dir;
+        document.getElementById('setup-photo-hint').textContent = '已检测到: ' + data.photo_dir;
+      } else {
+        document.getElementById('setup-photo-hint').textContent = '未检测到照片目录，请手动输入';
+      }
+    })
+    .catch(() => {});
+}
+
+function setupApply() {
+  const btn = document.getElementById('setup-btn');
+  btn.disabled = true; btn.textContent = '⏳ 处理中...';
+  
+  const data = {
+    photo_dir: document.getElementById('setup-photo-dir').value,
+    build_index: document.getElementById('setup-build-index').checked,
+    create_tasks: document.getElementById('setup-create-tasks').checked,
+  };
+  
+  fetch('/api/setup/apply', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data),
+  })
+    .then(r => r.json())
+    .then(resp => {
+      if (resp.success) {
+        btn.textContent = '✅ 初始化完成！';
+        setTimeout(() => {
+          document.getElementById('setup-overlay').style.display = 'none';
+          location.reload();
+        }, 1500);
+      } else {
+        btn.disabled = false; btn.textContent = '✅ 一键初始化';
+        document.getElementById('setup-errors').style.display = 'block';
+        document.getElementById('setup-errors').textContent = '❌ ' + (resp.error || '初始化失败');
+      }
+    })
+    .catch(e => {
+      btn.disabled = false; btn.textContent = '✅ 一键初始化';
+      document.getElementById('setup-errors').style.display = 'block';
+      document.getElementById('setup-errors').textContent = '❌ ' + e.message;
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  checkSetupNeeded();
+});
+</script>
+
+<!-- 主内容 -->
+<div class="main">
+
+  <!-- ===== 面板页 ===== -->
+  <div id="page-dashboard" class="page active">
+    <div class="header">
+      <h2>📊 系统面板</h2>
+      <p id="dashboard-time">加载中...</p>
+    </div>
+    <div class="grid" id="stats-grid">
+      <div class="card"><div class="label">📑 索引照片</div><div class="value" id="stat-index-total">-</div></div>
+      <div class="card"><div class="label">照片总数</div><div class="value" id="stat-total">-</div></div>
+      <div class="card"><div class="label">已评分</div><div class="value" id="stat-done">-</div><div class="sub" id="stat-done-pct"></div></div>
+      <div class="card"><div class="label">待处理</div><div class="value" id="stat-pending">-</div></div>
+      <div class="card"><div class="label">失败</div><div class="value" id="stat-error">-</div></div>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;">
+      <div class="card">
+        <div class="label">Ollama 地址</div>
+        <div class="value" style="font-size:16px;" id="cfg-ollama-url">-</div>
+      </div>
+      <div class="card">
+        <div class="label">✅ Ollama 状态</div>
+        <div class="value" style="font-size:16px;" id="dashboard-ollama-status">
+          <span id="ollama-status-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:6px;"></span>
+          <span id="ollama-status-text">检测中...</span>
+        </div>
+        <div class="sub" id="cfg-thread-info"></div>
+        <div class="sub" id="ollama-models-info" style="margin-top:2px;"></div>
+      </div>
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;">
+      <div class="card">
+        <div class="label">照片目录</div>
+        <div style="font-size:13px;margin-top:6px;color:var(--muted);word-break:break-all;" id="cfg-photo-dir">-</div>
+      </div>
+      <div class="card">
+        <div class="label">数据库大小</div>
+        <div class="value" style="font-size:16px;" id="cfg-db-size">-</div>
+      </div>
+    </div>
+
+    <!-- 实时进度 -->
+    <div class="progress-section card" id="progress-section" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="font-size:14px;">🔄 <span id="progress-title">任务执行中</span></h3>
+        <div>
+          <span id="progress-status" style="font-size:12px;color:var(--green);">运行中</span>
+          <button class="btn btn-danger btn-sm" onclick="stopTask()" style="margin-left:8px;">⏹️ 停止</button>
+        </div>
+      </div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-bar"></div></div>
+      <div class="progress-stats">
+        <div class="progress-stat"><div class="num" id="p-current">-</div><div class="lbl">当前</div></div>
+        <div class="progress-stat"><div class="num" id="p-total">-</div><div class="lbl">总计</div></div>
+        <div class="progress-stat"><div class="num" id="p-percent">-</div><div class="lbl">进度</div></div>
+        <div class="progress-stat"><div class="num" id="p-avg">-</div><div class="lbl">平均(s/张)</div></div>
+        <div class="progress-stat"><div class="num" id="p-elapsed">-</div><div class="lbl">已用(分钟)</div></div>
+        <div class="progress-stat"><div class="num" id="p-remaining">-</div><div class="lbl">剩余(分钟)</div></div>
+        <div class="progress-stat"><div class="num" id="p-success" style="color:var(--green);">0</div><div class="lbl">成功</div></div>
+        <div class="progress-stat"><div class="num" id="p-errors" style="color:var(--red);">0</div><div class="lbl">失败</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;">
+        当前照片：<span id="p-last-photo">-</span>
+      </div>
+      <div class="progress-log" id="progress-log"></div>
+    </div>
+  </div>
+
+  <!-- ===== 健康检查页 ===== -->
+  <div id="page-health" class="page">
+    <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <h2>🩺 系统健康检查</h2>
+        <p>自动检测运行环境、依赖和配置状态</p>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" onclick="loadHealth()">🔄 刷新</button>
+        <button class="btn btn-green" onclick="runHealthFix()">🔧 一键修复</button>
+      </div>
+    </div>
+
+    <!-- 环境概览 -->
+    <div class="grid" id="health-env-grid">
+      <div class="card"><div class="label">运行环境</div><div class="value" style="font-size:16px;" id="health-env-type">-</div></div>
+      <div class="card"><div class="label">Python 版本</div><div class="value" style="font-size:16px;" id="health-python-ver">-</div></div>
+      <div class="card"><div class="label">CPU 核数</div><div class="value" style="font-size:16px;" id="health-cpu-count">-</div></div>
+      <div class="card"><div class="label">GPU</div><div class="value" style="font-size:16px;" id="health-gpu">-</div></div>
+    </div>
+
+    <!-- 检查项 -->
+    <div id="health-items" style="display:flex;flex-direction:column;gap:8px;">
+      <div class="loading"><div class="spinner"></div>检测中...</div>
+    </div>
+  </div>
+
+  <!-- ===== 定时任务页 ===== -->
+  <div id="page-tasks" class="page">
+    <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <h2>⏰ 定时任务管理</h2>
+        <p>定时执行增量评分、推送等操作</p>
+      </div>
+      <button class="btn btn-primary" onclick="openTaskModal()">➕ 新建任务</button>
+    </div>
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--muted);">⏱️ 下次执行时间预览：</span>
+        <span id="scheduler-status" style="font-size:12px;">加载中...</span>
+      </div>
+    </div>
+    <div class="task-list" id="task-list-container">
+      <div class="task-empty"><div class="loading"><div class="spinner"></div>加载任务中...</div></div>
+    </div>
+  </div>
+
+  <!-- ===== 配置页 ===== -->
+  <div id="page-config" class="page">
+    <div class="header">
+      <h2>⚙️ 系统配置</h2>
+      <p>修改后点击保存，重启容器生效</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;">
+      <div class="card">
+        <h3 style="font-size:14px;margin-bottom:16px;">📂 路径配置</h3>
+        <div class="form-group"><label>照片目录 (photo_dir)</label><input id="cfg-photo_dir" placeholder="/photos"></div>
+        <div class="form-group"><label>数据目录 (project_dir)</label><input id="cfg-project_dir" placeholder="/data"></div>
+        <div class="form-group"><label>索引文件</label><input id="cfg-index_file" placeholder="/data/index.txt"></div>
+        <div class="form-row">
+          <div class="form-group"><label>评分数据库</label><input id="cfg-score_db" placeholder="/data/scores.sqlite"></div>
+          <div class="form-group"><label>字体文件</label><input id="cfg-font_file" placeholder="/app/font.ttf"></div>
+        </div>
+
+        <h3 style="font-size:14px;margin:20px 0 16px;">🤖 Ollama 配置</h3>
+        <div class="form-row">
+          <div class="form-group"><label>API 地址</label><input id="cfg-input-ollama-url" placeholder="http://localhost:11434"></div>
+          <div class="form-group"><label>超时（秒）</label><input id="cfg-ollama-timeout" placeholder="200"></div>
+        </div>
+        <div class="form-group"><label>模型选择</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <select id="cfg-ollama-model" style="flex:1;">
+              <option value="">加载模型列表中...</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="loadModels()">🔄 刷新</button>
+          </div>
+        </div>
+        <div class="form-group"><label>CPU 线程数</label><input id="cfg-num_thread" placeholder="4"></div>
+
+        <h3 style="font-size:14px;margin:20px 0 16px;">📡 推送配置</h3>
+        <div class="form-row">
+          <div class="form-group"><label>设备 MAC</label><input id="cfg-device_mac" placeholder="xx:xx:xx:xx:xx:xx"></div>
+          <div class="form-group"><label>API Key</label><input id="cfg-api_key" placeholder="输入 API Key" type="password"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>API 地址</label><input id="cfg-api_base" placeholder="https://api.zectrix.com/open/v1/devices"></div>
+          <div class="form-group"><label>页面 ID</label><input id="cfg-page_id" placeholder="1"></div>
+        </div>
+
+        <h3 style="font-size:14px;margin:20px 0 16px;">🎯 评分</h3>
+        <div class="form-row">
+          <div class="form-group"><label>最低分阈值</label><input id="cfg-min_score" placeholder="0"></div>
+          <div class="form-group"><label>衰减系数</label><input id="cfg-decay" placeholder="0.15"></div>
+        </div>
+
+        <div style="margin-top:20px;display:flex;gap:12px;">
+          <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
+          <button class="btn btn-ghost" onclick="loadConfig()">🔄 刷新</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:14px;margin-bottom:16px;">📋 当前配置预览</h3>
+        <pre id="config-preview" style="font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-all;max-height:600px;overflow-y:auto;"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 日志页 ===== -->
+  <div id="page-logs" class="page">
+    <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <h2>📋 运行日志</h2>
+        <p>最近 200 行日志</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="loadLogs()">🔄 刷新</button>
+    </div>
+    <div class="log-container" id="log-container">
+      <div class="loading"><div class="spinner"></div>加载日志中...</div>
+    </div>
+  </div>
+
+  <!-- ===== 已评分照片页 ===== -->
+  <div id="page-gallery" class="page">
+    <div class="header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2>🖼️ 已评分照片</h2>
+        <p id="gallery-total">加载中...</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <select id="gallery-sort" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onchange="loadGallery()">
+          <option value="scored_at_desc">最新评分</option>
+          <option value="score_desc">评分最高</option>
+          <option value="score_asc">评分最低</option>
+          <option value="date_desc">拍摄日期最新</option>
+          <option value="date_asc">拍摄日期最早</option>
+        </select>
+        <select id="gallery-scene" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onchange="loadGallery()">
+          <option value="">全部场景</option>
+        </select>
+        <input id="gallery-min-score" type="number" min="0" max="10" step="0.5" placeholder="最低分" 
+               style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;" onchange="loadGallery()">
+      </div>
+    </div>
+    <div id="gallery-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-top:16px;">
+      <div class="loading" style="grid-column:1/-1;"><div class="spinner"></div>加载中...</div>
+    </div>
+    <div id="gallery-more" style="text-align:center;margin-top:16px;display:none;">
+      <button class="btn btn-ghost" onclick="loadGalleryMore()">加载更多</button>
+    </div>
+  </div>
+
+  <!-- ===== 操作页 ===== -->
+  <div id="page-actions" class="page">
+    <div class="header">
+      <h2>🔧 快速操作</h2>
+      <p>执行常用操作，结果会显示在下方 <span id="pending-badge" style="display:none;color:var(--yellow);font-weight:600;">加载中...</span></p>
+    </div>
+    <div class="action-grid" id="action-grid">
+      <div class="action-card">
+        <div class="info"><h4>⚡ 一键全流程</h4><p>建索引 → AI评分（推荐日常使用）</p></div>
+        <button class="btn btn-green btn-sm" onclick="runLongTask('score_full')">执行</button>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>🖼️ AI 评分（全量）</h4><p>处理所有待评分照片，支持实时进度</p></div>
+        <button class="btn btn-primary btn-sm" onclick="runLongTask('score_auto')">执行</button>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>📈 查看统计</h4><p>评分进度与状态</p></div>
+        <button class="btn btn-ghost btn-sm" onclick="runAction('score_stats')">执行</button>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>🏆 高分照片</h4><p>Top 10 评分最高的照片</p></div>
+        <button class="btn btn-ghost btn-sm" onclick="runAction('score_top')">执行</button>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>⏳ 增量评分</h4><p>处理新增照片，支持实时进度</p></div>
+        <button class="btn btn-primary btn-sm" onclick="runLongTask('score_run')">执行</button>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>🎯 选片预览</h4><p>仅选片，不推送</p></div>
+        <button class="btn btn-ghost btn-sm" onclick="runAction('push_select')">执行</button>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>📡 选片并推送</h4><p>推送到设备 <span id="push-device-label"></span></p></div>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <select id="push-device-select" class="btn btn-ghost" style="padding:4px 8px;font-size:12px;max-width:120px;">
+            <option value="">选择设备...</option>
+          </select>
+          <button class="btn btn-green btn-sm" onclick="runPushWithDevice()">执行</button>
+        </div>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>🔄 重试失败</h4><p>重新处理评分失败的照片</p></div>
+        <button class="btn btn-danger btn-sm" onclick="runLongTask('retry')">执行</button>
+      </div>
+      <div class="action-card">
+        <div class="info"><h4>📑 建立索引</h4><p>扫描照片目录，生成索引文件</p></div>
+        <button class="btn btn-ghost btn-sm" onclick="runLongTask('build_index')">执行</button>
+      </div>
+</div>
+    <div class="log-container" id="action-result" style="margin-top:16px;display:none;">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">执行结果：</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- 任务编辑模态框 -->
+<div class="modal-overlay" id="task-modal">
+  <div class="modal">
+    <h3 id="task-modal-title">📝 新建定时任务</h3>
+    <input type="hidden" id="task-edit-id">
+    <div class="form-group"><label>任务名称</label><input id="task-name" placeholder="例如：每日增量评分"></div>
+    <div class="form-group"><label>描述</label><input id="task-desc" placeholder="简要描述任务目的"></div>
+    <div class="form-group"><label>执行操作</label>
+      <select id="task-action" onchange="toggleTaskDeviceField()"></select>
+    </div>
+    <div class="form-group" id="task-device-group" style="display:none;">
+      <label>推送设备</label>
+      <select id="task-device">
+        <option value="">默认设备</option>
+      </select>
+    </div>
+    <div class="form-group"><label>调度类型</label>
+      <select id="task-schedule-type" onchange="toggleScheduleFields()">
+        <option value="cron">Cron 表达式</option>
+        <option value="interval">间隔（秒）</option>
+        <option value="once">一次性</option>
+      </select>
+    </div>
+    <div id="task-cron-group" class="form-group">
+      <label>Cron 表达式 <span style="font-size:10px;color:var(--muted);">(分 时 日 月 周)</span></label>
+      <input id="task-cron" placeholder="0 6 * * *">
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;">
+        常用: <code style="color:var(--accent);cursor:pointer;" onclick="fillCron('0 8 * * *')">0 8 * * *</code> 每日8点
+        <code style="color:var(--accent);cursor:pointer;margin-left:4px;" onclick="fillCron('0 3 * * *')">0 3 * * *</code> 每日3点
+        <code style="color:var(--accent);cursor:pointer;margin-left:4px;" onclick="fillCron('*/30 * * * *')">*/30 * * * *</code> 每30分钟
+      </div>
+    </div>
+    <div id="task-interval-group" class="form-group" style="display:none;">
+      <label>间隔时间（秒）</label>
+      <input id="task-interval" placeholder="86400" value="86400">
+      <div style="font-size:10px;color:var(--muted);margin-top:4px;">
+        3600=1小时, 21600=6小时, 43200=12小时, 86400=24小时
+      </div>
+    </div>
+    <div id="task-once-group" class="form-group" style="display:none;">
+      <label>执行时间</label>
+      <input id="task-run-at" type="datetime-local">
+    </div>
+    <div class="btn-bar">
+      <button class="btn btn-ghost" onclick="closeTaskModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveTask()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+// ─── 页面切换 ───────────────────────────────────────────────────
+function switchPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  
+  // 切到日志页开始自动刷新，离开时停止
+  if (page === 'logs') {
+    startLogPolling();
+  } else {
+    stopLogPolling();
+  }
+}
+
+// ─── Toast ──────────────────────────────────────────────────────
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + type;
+  t.style.display = 'block';
+  setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+// ─── 面板数据 ──────────────────────────────────────────────────
+function loadDashboard() {
+  fetch('/api/stats')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('dashboard-time').textContent = '更新于 ' + data.server_time;
+      document.getElementById('stat-total').textContent = data.stats.total;
+      document.getElementById('stat-index-total').textContent = data.index_count || 0;
+      document.getElementById('stat-done').textContent = data.stats.done;
+      const pct = data.stats.total > 0 ? (data.stats.done / data.stats.total * 100).toFixed(1) + '%' : '0%';
+      document.getElementById('stat-done-pct').textContent = '完成率 ' + pct;
+      document.getElementById('stat-pending').textContent = data.stats.pending;
+      document.getElementById('stat-error').textContent = data.stats.error;
+      document.getElementById('cfg-ollama-url').textContent = data.config.ollama_url;
+      // Ollama 状态指示
+      const odot = document.getElementById('ollama-status-dot');
+      const otext = document.getElementById('ollama-status-text');
+      const omodelInfo = document.getElementById('ollama-models-info');
+      if (data.ollama && data.ollama.running) {
+        odot.style.background = 'var(--green)';
+        otext.textContent = data.config.ollama_model + ' ✅';
+        omodelInfo.textContent = '已加载 ' + data.ollama.model_count + ' 个模型';
+      } else {
+        odot.style.background = 'var(--red)';
+        otext.textContent = 'Ollama 未连接';
+        omodelInfo.textContent = '请启动: ollama serve';
+      }
+      // 显示 CPU 线程信息
+      const nt = data.config.num_thread;
+      const cc = data.config.cpu_count;
+      if (nt === 0 || nt === '0') {
+        document.getElementById('cfg-thread-info').textContent = `CPU ${cc}核 | 自动检测中...`;
+      } else {
+        document.getElementById('cfg-thread-info').textContent = `CPU ${cc}核 | 使用 ${nt} 线程`;
+      }
+      document.getElementById('cfg-photo-dir').textContent = data.config.photo_dir;
+      document.getElementById('cfg-db-size').textContent = data.db_size_kb + ' KB';
+    })
+    .catch(e => { showToast('加载面板失败: ' + e.message, 'error'); });
+}
+
+// ─── 配置 ──────────────────────────────────────────────────────
+function loadConfig() {
+  fetch('/api/config')
+    .then(r => r.json())
+    .then(cfg => {
+      function v(path, def) {
+        let obj = cfg;
+        for (const k of path) { if (obj && typeof obj === 'object') obj = obj[k]; else return def; }
+        return obj !== undefined && obj !== null ? obj : def;
+      }
+      document.getElementById('cfg-photo_dir').value = v(['paths','photo_dir'], '');
+      document.getElementById('cfg-project_dir').value = v(['paths','project_dir'], '');
+      document.getElementById('cfg-index_file').value = v(['paths','index_file'], '');
+      document.getElementById('cfg-score_db').value = v(['paths','score_db'], '');
+      document.getElementById('cfg-font_file').value = v(['paths','font_file'], '');
+      document.getElementById('cfg-input-ollama-url').value = v(['ollama','base_url'], 'http://localhost:11434');
+      document.getElementById('cfg-ollama-timeout').value = v(['ollama','timeout'], 200);
+      document.getElementById('cfg-num_thread').value = v(['ollama','num_thread'], 4);
+      document.getElementById('cfg-device_mac').value = v(['push_settings','device_mac'], '');
+      document.getElementById('cfg-api_key').value = v(['push_settings','api_key'], '');
+      document.getElementById('cfg-api_base').value = v(['push_settings','api_base'], '');
+      document.getElementById('cfg-page_id').value = v(['push_settings','page_id'], 1);
+      document.getElementById('cfg-min_score').value = v(['scoring','min_score_threshold'], 0);
+      document.getElementById('cfg-decay').value = v(['scoring','decay_factor'], 0.15);
+
+      // 预览
+      document.getElementById('config-preview').textContent = JSON.stringify(cfg, null, 2);
+
+      // 设置当前模型
+      const currentModel = v(['ollama','model'], '');
+      const sel = document.getElementById('cfg-ollama-model');
+      const opt = Array.from(sel.options).find(o => o.value === currentModel);
+      if (opt) opt.selected = true;
+    })
+    .catch(e => { showToast('加载配置失败', 'error'); });
+  loadModels();
+}
+
+function saveConfig() {
+  const path = id => document.getElementById(id).value;
+  const num = id => parseInt(document.getElementById(id).value) || 0;
+  const cfg = {
+    paths: {
+      photo_dir: path('cfg-photo_dir'),
+      project_dir: path('cfg-project_dir'),
+      index_file: path('cfg-index_file'),
+      score_db: path('cfg-score_db'),
+      font_file: path('cfg-font_file')
+    },
+    ollama: {
+      base_url: path('cfg-input-ollama-url'),
+      model: document.getElementById('cfg-ollama-model').value,
+      timeout: num('cfg-ollama-timeout'),
+      num_thread: num('cfg-num_thread')
+    },
+    push_settings: {
+      device_mac: path('cfg-device_mac'),
+      api_key: path('cfg-api_key'),
+      api_base: path('cfg-api_base'),
+      page_id: num('cfg-page_id')
+    },
+    scoring: {
+      min_score_threshold: num('cfg-min_score'),
+      decay_factor: parseFloat(path('cfg-decay')) || 0.15
+    }
+  };
+
+  fetch('/api/config', { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(cfg) })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) { showToast('✅ 配置已保存'); loadConfig(); }
+      else showToast('❌ ' + data.error, 'error');
+    })
+    .catch(e => showToast('保存失败', 'error'));
+}
+
+function loadModels() {
+  const sel = document.getElementById('cfg-ollama-model');
+  sel.disabled = true; sel.innerHTML = '<option value="">加载中...</option>';
+  fetch('/api/models')
+    .then(r => r.json())
+    .then(data => {
+      if (data.models.length === 0) {
+        sel.innerHTML = '<option value="">无可用模型</option>';
+      } else {
+        sel.innerHTML = data.models.map(m =>
+          `<option value="${m}" ${m === data.current ? 'selected' : ''}>${m}</option>`
+        ).join('');
+      }
+      sel.disabled = false;
+    })
+    .catch(() => {
+      sel.innerHTML = '<option value="">连接 Ollama 失败</option>';
+      sel.disabled = false;
+    });
+}
+
+// ─── 日志 ──────────────────────────────────────────────────────
+function loadLogs() {
+  const container = document.getElementById('log-container');
+  const wasEmpty = container.innerHTML === '' || container.innerHTML.includes('暂无日志');
+  if (wasEmpty) {
+    container.innerHTML = '<div class="loading"><div class="spinner"></div>加载日志中...</div>';
+  }
+  fetch('/api/logs')
+    .then(r => r.json())
+    .then(data => {
+      if (data.logs) {
+        container.innerHTML = data.logs.split('\n').map(line =>
+          `<div class="log-line">${escapeHtml(line)}</div>`
+        ).join('');
+        container.scrollTop = 0; // 滚动到顶部，显示最新日志
+      } else {
+        container.innerHTML = '<div style="color:var(--muted);padding:20px;">暂无日志</div>';
+      }
+    })
+    .catch(() => {
+      container.innerHTML = '<div style="color:var(--red);padding:20px;">加载日志失败</div>';
+    });
+}
+
+// ─── 操作 ──────────────────────────────────────────────────────
+function runAction(action) {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '⏳';
+
+  const resultDiv = document.getElementById('action-result');
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">执行中...</div>';
+
+  fetch('/api/action/' + action, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      let output = '';
+      if (data.stdout) output += escapeHtml(data.stdout);
+      if (data.stderr) output += '\n<span style="color:var(--red)">' + escapeHtml(data.stderr) + '</span>';
+      if (!output) output = '<span style="color:var(--muted)">（无输出）</span>';
+      resultDiv.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">执行结果：</div>' +
+        '<div class="log-container" style="max-height:400px;">' +
+        output.split('\n').map(l => '<div class="log-line">' + l + '</div>').join('') + '</div>';
+
+      if (data.success) showToast('✅ 执行成功');
+      else showToast('⚠️ 执行完毕（有错误）', 'error');
+      btn.disabled = false; btn.textContent = '执行';
+      loadDashboard();
+    })
+    .catch(e => {
+      resultDiv.innerHTML = '<span style="color:var(--red)">请求失败: ' + e.message + '</span>';
+      btn.disabled = false; btn.textContent = '执行';
+    });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ─── 实时进度监控 ──────────────────────────────────────────────
+let progressInterval = null;
+
+function runLongTask(action) {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '⏳ 启动中...';
+  
+  fetch('/api/action/' + action, { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false; btn.textContent = '执行';
+      if (data.success) {
+        showToast('✅ ' + data.message);
+        showProgress(true);
+        startProgressPolling();
+        switchPage('dashboard');
+      } else {
+        showToast('❌ ' + (data.error || '启动失败'), 'error');
+      }
+    })
+    .catch(e => { btn.disabled = false; btn.textContent = '执行'; showToast('❌ ' + e.message, 'error'); });
+}
+
+function stopTask() {
+  fetch('/api/action/stop', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) showToast('⏹️ 任务已停止');
+    });
+}
+
+function showProgress(visible) {
+  document.getElementById('progress-section').style.display = visible ? 'block' : 'none';
+}
+
+function updateProgress(data) {
+  const p = data;
+  
+  // 进度条
+  document.getElementById('progress-bar').style.width = p.percent + '%';
+  
+  // 统计
+  document.getElementById('p-current').textContent = p.current || '-';
+  document.getElementById('p-total').textContent = p.total || '-';
+  document.getElementById('p-percent').textContent = p.percent ? p.percent + '%' : '-';
+  document.getElementById('p-avg').textContent = p.avg_time ? p.avg_time.toFixed(1) : '-';
+  document.getElementById('p-elapsed').textContent = p.elapsed_min ? p.elapsed_min.toFixed(1) : '-';
+  document.getElementById('p-remaining').textContent = p.remaining_min ? p.remaining_min.toFixed(0) : '-';
+  document.getElementById('p-success').textContent = p.success || 0;
+  document.getElementById('p-errors').textContent = p.errors || 0;
+  document.getElementById('p-last-photo').textContent = p.last_photo || '-';
+  document.getElementById('progress-title').textContent = p.label || '任务执行中';
+  
+  const statusEl = document.getElementById('progress-status');
+  if (p.running) {
+    statusEl.textContent = '🔄 ' + (p.status_text || '运行中');
+    statusEl.style.color = 'var(--green)';
+    document.querySelector('#action-grid .btn-primary').textContent = '⏳';
+  } else {
+    const interrupted = p.interrupted;
+    if (interrupted) {
+      statusEl.textContent = p.status_text || '⏹️ 已中断';
+      statusEl.style.color = 'var(--yellow)';
+      showToast('⏹️ ' + (p.status_text || '任务中断'), 'warning');
+      // 中断后不自动隐藏，方便查看中断位置
+      setTimeout(() => showProgress(false), 30000);
+    } else {
+      statusEl.textContent = p.status_text || '已完成';
+      statusEl.style.color = 'var(--muted)';
+      showToast('✅ ' + (p.status_text || '任务完成'));
+      setTimeout(() => showProgress(false), 10000);
+    }
+    stopProgressPolling();
+    document.querySelector('#action-grid .btn-primary').textContent = '执行';
+    loadDashboard();
+    refreshPendingCount(); // 完成后刷新待处理数量
+  }
+}
+
+function startProgressPolling() {
+  pollProgress(); // 立即执行一次
+  progressInterval = setInterval(pollProgress, 2000);
+}
+
+function pollProgress() {
+  fetch('/api/progress')
+    .then(r => r.json())
+    .then(data => updateProgress(data))
+    .catch(() => {});
+}
+
+function stopProgressPolling() {
+  if (progressInterval) { clearInterval(progressInterval); progressInterval = null; }
+}
+
+// ─── 日志自动刷新 ──────────────────────────────────────────────
+let logInterval = null;
+
+function startLogPolling() {
+  if (logInterval) return;
+  loadLogs(); // 立即加载一次
+  logInterval = setInterval(loadLogs, 10000); // 每10秒刷新
+}
+
+function stopLogPolling() {
+  if (logInterval) { clearInterval(logInterval); logInterval = null; }
+}
+
+// ─── 已评分照片展示 ──────────────────────────────────────────
+let galleryOffset = 0;
+const GALLERY_LIMIT = 50;
+
+function loadGallery() {
+  galleryOffset = 0;
+  const grid = document.getElementById('gallery-grid');
+  grid.innerHTML = '<div class="loading" style="grid-column:1/-1;"><div class="spinner"></div>加载中...</div>';
+  _fetchGallery();
+}
+
+function loadGalleryMore() {
+  _fetchGallery();
+}
+
+function _fetchGallery() {
+  const sort = document.getElementById('gallery-sort').value;
+  const scene = document.getElementById('gallery-scene').value;
+  const minScore = document.getElementById('gallery-min-score').value;
+  
+  let url = `/api/scored-photos?sort=${sort}&limit=${GALLERY_LIMIT}&offset=${galleryOffset}`;
+  if (scene) url += `&scene=${encodeURIComponent(scene)}`;
+  if (minScore) url += `&min_score=${minScore}`;
+  
+  const grid = document.getElementById('gallery-grid');
+  const moreBtn = document.getElementById('gallery-more');
+  
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (galleryOffset === 0) {
+        grid.innerHTML = '';
+        // 填充场景下拉
+        const sceneSel = document.getElementById('gallery-scene');
+        if (sceneSel.options.length === 1 && data.scenes) {
+          data.scenes.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            sceneSel.appendChild(opt);
+          });
+        }
+        document.getElementById('gallery-total').textContent = `共 ${data.total} 张已评分照片`;
+      }
+      
+      if (data.photos.length === 0) {
+        if (galleryOffset === 0) {
+          grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--muted);">暂无已评分照片</div>';
+        }
+        moreBtn.style.display = 'none';
+        return;
+      }
+      
+      data.photos.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.cssText = 'padding:12px;display:flex;flex-direction:column;gap:8px;';
+        
+        const scoreColor = p.score >= 8 ? 'var(--green)' : p.score >= 6 ? 'var(--yellow)' : 'var(--red)';
+        
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:start;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                ${escapeHtml(p.file_name)}
+              </div>
+              <div style="color:var(--muted);font-size:11px;margin-top:2px;">
+                ${p.shoot_date ? '📅 ' + p.shoot_date : ''}
+                ${p.scene ? ' | 🏷️ ' + escapeHtml(p.scene) : ''}
+              </div>
+            </div>
+            <div style="font-size:20px;font-weight:700;color:${scoreColor};white-space:nowrap;">
+              ${p.score != null ? p.score.toFixed(1) : '-'}
+            </div>
+          </div>
+          ${p.description ? `<div style="color:var(--text);font-size:12px;line-height:1.4;">${escapeHtml(p.description)}</div>` : ''}
+          ${p.tags ? `<div style="color:var(--muted);font-size:11px;">🏷️ ${escapeHtml(p.tags)}</div>` : ''}
+          ${p.highlights ? `<div style="color:var(--accent);font-size:11px;">✨ ${escapeHtml(p.highlights)}</div>` : ''}
+        `;
+        grid.appendChild(card);
+      });
+      
+      galleryOffset += data.photos.length;
+      moreBtn.style.display = (galleryOffset < data.total) ? 'block' : 'none';
+    })
+    .catch(e => {
+      grid.innerHTML = '<div style="grid-column:1/-1;padding:40px;text-align:center;color:var(--red);">加载失败: ' + e.message + '</div>';
+    });
+}
+
+// ─── 设备选择器 ──────────────────────────────────────────────
+function loadDevices() {
+  const sel = document.getElementById('push-device-select');
+  const label = document.getElementById('push-device-label');
+  fetch('/api/devices')
+    .then(r => r.json())
+    .then(data => {
+      sel.innerHTML = '<option value="">选择设备...</option>';
+      const list = data.configs || [];
+      // 先选有 MAC 地址的设备
+      let selected = '';
+      list.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.name;
+        opt.textContent = d.name + (d.device_mac ? ' (' + d.device_mac.slice(0, 8) + '...)' : '');
+        sel.appendChild(opt);
+        if (d.device_mac && !selected) selected = d.name;
+      });
+      if (selected) sel.value = selected;
+      if (list.length > 0) {
+        label.textContent = '→ ' + (sel.options[sel.selectedIndex]?.text || '');
+      }
+    })
+    .catch(() => {});
+}
+
+function runPushWithDevice() {
+  const device = document.getElementById('push-device-select').value;
+  if (!device) { showToast('请先选择推送设备', 'error'); return; }
+  const btn = document.querySelector('#action-grid .btn-green');
+  btn.disabled = true; btn.textContent = '⏳';
+  fetch('/api/action/push_push', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({device: device})
+  })
+  .then(r => r.json())
+  .then(res => {
+    btn.disabled = false; btn.textContent = '执行';
+    const resultDiv = document.getElementById('action-result');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<pre style="margin:0;white-space:pre-wrap;word-break:break-all;">' +
+      escapeHtml(JSON.stringify(res, null, 2)) + '</pre>';
+    if (res.success) showToast('✅ 推送成功');
+    else showToast('❌ ' + (res.error || '推送失败'), 'error');
+  })
+  .catch(e => { btn.disabled = false; btn.textContent = '执行'; showToast('❌ ' + e.message, 'error'); });
+}
+
+// ─── 断点续评：显示待处理数量 ────────────────────────────────
+function refreshPendingCount() {
+  fetch('/api/pending-count')
+    .then(r => r.json())
+    .then(data => {
+      const n = data.pending || 0;
+      const el = document.getElementById('pending-badge');
+      if (el) {
+        if (n > 0) {
+          el.textContent = ` | 🤖 ${n} 张待评分`;
+          el.style.display = 'inline';
+        } else {
+          el.style.display = 'none';
+        }
+      }
+    })
+    .catch(() => {});
+}
+
+// ─── 健康检查 ──────────────────────────────────────────────
+function loadHealth() {
+  fetch('/api/health')
+    .then(r => r.json())
+    .then(data => {
+      const d = data.data;
+      const env = d.environment || {};
+
+      // 环境概览
+      const envType = env.in_docker ? '🐳 Docker' :
+        env.os === 'win32' ? '🪟 Windows' :
+        env.os === 'darwin' ? '🍎 macOS' : '🐧 Linux';
+      document.getElementById('health-env-type').textContent = envType;
+      document.getElementById('health-python-ver').textContent = env.python_version || '-';
+      document.getElementById('health-cpu-count').textContent = (env.cpu_count || '-') + ' 核';
+      document.getElementById('health-gpu').textContent = env.has_gpu ? (env.gpu_info || '✅') : '❌ 无 GPU';
+
+      // 检查项列表
+      const items = [
+        { key: 'config', label: '配置文件', icon: '📄' },
+        { key: 'python_deps', label: 'Python 依赖', icon: '📦' },
+        { key: 'ollama', label: 'Ollama 服务', icon: '🤖' },
+        { key: 'model', label: 'AI 模型', icon: '🧠' },
+        { key: 'photo_dir', label: '照片目录', icon: '📷' },
+        { key: 'database', label: '数据库', icon: '🗄️' },
+        { key: 'index', label: '照片索引', icon: '📑' },
+      ];
+
+      const container = document.getElementById('health-items');
+      container.innerHTML = items.map(item => {
+        const info = d[item.key] || {};
+        const ok = info.ok;
+        const dot = ok ? '🟢' : '🔴';
+        const extra = info.msg || '';
+        return `<div class="action-card" style="cursor:default;">
+          <div class="info">
+            <h4>${item.icon} ${item.label}</h4>
+            <p>${dot} ${extra}</p>
+            ${info.missing ? '<p style="color:var(--yellow);">缺少: ' + info.missing.join(', ') + '</p>' : ''}
+          </div>
+        </div>`;
+      }).join('');
+    })
+    .catch(e => {
+      document.getElementById('health-items').innerHTML =
+        '<div style="color:var(--red);padding:20px;">健康检查失败: ' + e.message + '</div>';
+    });
+}
+
+function runHealthFix() {
+  showToast('开始自动修复...');
+  fetch('/api/health/fix', { method: 'POST' })
+    .then(r => r.json())
+    .then(data => {
+      showToast('✅ 修复完成');
+      loadHealth();
+      loadDashboard(); // 刷新面板数据
+    })
+    .catch(e => showToast('❌ 修复失败: ' + e.message, 'error'));
+}
+
+// ─── 定时任务管理 ──────────────────────────────────────────────
+let availableActions = [];
+
+function loadTasks() {
+  const container = document.getElementById('task-list-container');
+  container.innerHTML = '<div class="task-empty"><div class="loading"><div class="spinner"></div>加载任务中...</div></div>';
+  
+  fetch('/api/tasks')
+    .then(r => r.json())
+    .then(data => {
+      availableActions = data.available_actions || [];
+      const tasks = data.tasks || [];
+      
+      if (tasks.length === 0) {
+        container.innerHTML = '<div class="task-empty">暂无定时任务，点击右上角「新建」创建</div>';
+        document.getElementById('scheduler-status').textContent = '暂无任务';
+        return;
+      }
+      
+      const enabled = tasks.filter(t => t.enabled).length;
+      document.getElementById('scheduler-status').textContent =
+        `共 ${tasks.length} 个任务（${enabled} 个活动）`;
+      
+      container.innerHTML = tasks.map(t => {
+        const icon = t.action_icon || '🔧';
+        const typeLabel = t.schedule_type === 'cron' ? `cron: ${t.cron}` :
+          t.schedule_type === 'interval' ? `每 ${Math.round(t.interval_seconds/60)} 分钟` :
+          t.schedule_type === 'once' ? `一次: ${t.run_at || ''}` : t.schedule_type;
+        const nextRun = t.next_run ? new Date(t.next_run).toLocaleString('zh-CN') : '—';
+        const lastRun = t.last_run ? new Date(t.last_run).toLocaleString('zh-CN') : '从未执行';
+        
+        return `<div class="task-item">
+          <div class="icon">${icon}</div>
+          <div class="info">
+            <h4>${escapeHtml(t.name)}</h4>
+            <p>${t.description ? escapeHtml(t.description) : t.action_label || ''}</p>
+            <div>
+              <span class="schedule-badge">${typeLabel}</span>
+              <span style="font-size:10px;color:var(--muted);margin-left:8px;">⏭️ ${nextRun}</span>
+              <span style="font-size:10px;color:var(--muted);margin-left:8px;">✅ ${lastRun}</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="toggle ${t.enabled ? 'on' : ''}" title="${t.enabled ? '点击禁用' : '点击启用'}"
+              onclick="toggleTask('${t.id}')"></button>
+            <button class="btn btn-ghost btn-sm" onclick="editTask('${t.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">🗑️</button>
+          </div>
+        </div>`;
+      }).join('');
+    })
+    .catch(e => {
+      container.innerHTML = `<div class="task-empty" style="color:var(--red);">加载失败: ${e.message}</div>`;
+    });
+}
+
+function fillCron(expr) {
+  document.getElementById('task-cron').value = expr;
+}
+
+function toggleScheduleFields() {
+  const type = document.getElementById('task-schedule-type').value;
+  document.getElementById('task-cron-group').style.display = type === 'cron' ? 'block' : 'none';
+  document.getElementById('task-interval-group').style.display = type === 'interval' ? 'block' : 'none';
+  document.getElementById('task-once-group').style.display = type === 'once' ? 'block' : 'none';
+}
+
+function toggleTaskDeviceField() {
+  const action = document.getElementById('task-action').value;
+  const group = document.getElementById('task-device-group');
+  group.style.display = action === 'push_push' ? 'block' : 'none';
+}
+
+function openTaskModal(taskData) {
+  const modal = document.getElementById('task-modal');
+  const isEdit = !!taskData;
+  
+  document.getElementById('task-modal-title').textContent = isEdit ? '✏️ 编辑定时任务' : '📝 新建定时任务';
+  document.getElementById('task-edit-id').value = taskData ? taskData.id : '';
+  document.getElementById('task-name').value = taskData ? taskData.name : '';
+  document.getElementById('task-desc').value = taskData ? (taskData.description || '') : '';
+  
+  // 操作下拉
+  const sel = document.getElementById('task-action');
+  sel.innerHTML = availableActions.map(a =>
+    `<option value="${a.id}" ${taskData && taskData.action === a.id ? 'selected' : ''}>${a.icon || '🔧'} ${a.label}</option>`
+  ).join('');
+  
+  // 调度类型
+  const st = taskData ? taskData.schedule_type : 'cron';
+  document.getElementById('task-schedule-type').value = st;
+  document.getElementById('task-cron').value = taskData ? (taskData.cron || '0 6 * * *') : '0 6 * * *';
+  document.getElementById('task-interval').value = taskData ? (taskData.interval_seconds || 86400) : 86400;
+  document.getElementById('task-run-at').value = taskData ? (taskData.run_at || '') : '';
+  
+  toggleScheduleFields();
+  toggleTaskDeviceField();
+  
+  // 加载设备列表到选项
+  const devSel = document.getElementById('task-device');
+  fetch('/api/devices').then(r=>r.json()).then(d => {
+    devSel.innerHTML = '<option value="">默认设备</option>';
+    (d.configs || []).forEach(dev => {
+      const opt = document.createElement('option');
+      opt.value = dev.name;
+      opt.textContent = dev.name;
+      devSel.appendChild(opt);
+    });
+    if (taskData && taskData.device) devSel.value = taskData.device;
+  }).catch(()=>{});
+  
+  modal.classList.add('show');
+}
+
+function closeTaskModal() {
+  document.getElementById('task-modal').classList.remove('show');
+}
+
+function saveTask() {
+  const editId = document.getElementById('task-edit-id').value;
+  const data = {
+    name: document.getElementById('task-name').value || '未命名任务',
+    description: document.getElementById('task-desc').value,
+    action: document.getElementById('task-action').value,
+    schedule_type: document.getElementById('task-schedule-type').value,
+    cron: document.getElementById('task-cron').value,
+    interval_seconds: parseInt(document.getElementById('task-interval').value) || 86400,
+    run_at: document.getElementById('task-run-at').value,
+    device: document.getElementById('task-device').value || '',
+  };
+  
+  if (!data.name) { showToast('请输入任务名称', 'error'); return; }
+  
+  const method = editId ? 'PUT' : 'POST';
+  const url = editId ? `/api/tasks/${editId}` : '/api/tasks';
+  
+  fetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(data) })
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) {
+        showToast(editId ? '✅ 任务已更新' : '✅ 任务已创建');
+        closeTaskModal();
+        loadTasks();
+      } else {
+        showToast('❌ ' + (res.error || '保存失败'), 'error');
+      }
+    })
+    .catch(e => showToast('❌ ' + e.message, 'error'));
+}
+
+function editTask(taskId) {
+  fetch('/api/tasks')
+    .then(r => r.json())
+    .then(data => {
+      const task = (data.tasks || []).find(t => t.id === taskId);
+      if (task) openTaskModal(task);
+      else showToast('任务不存在', 'error');
+    });
+}
+
+function deleteTask(taskId) {
+  if (!confirm('确定删除此定时任务？')) return;
+  fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) { showToast('🗑️ 任务已删除'); loadTasks(); }
+      else showToast('❌ ' + (res.error || '删除失败'), 'error');
+    });
+}
+
+function toggleTask(taskId) {
+  fetch(`/api/tasks/${taskId}/toggle`, { method: 'POST' })
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) { loadTasks(); }
+      else showToast('❌ ' + (res.error || '操作失败'), 'error');
+    });
+}
+
+// ─── 定时刷新 ────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadDashboard(); loadConfig(); loadTasks();
+  checkSetupNeeded(); // 检查是否需要初始化引导
+  refreshPendingCount(); // 断点续评：显示待处理数量
+  loadDevices(); // 加载设备列表
+  setInterval(loadDashboard, 30000); // 30秒自动刷新面板
+  // 检查是否有任务正在运行
+  fetch('/api/progress').then(r=>r.json()).then(d => {
+    if (d.running) { showProgress(true); startProgressPolling(); }
+  }).catch(()=>{});
+});
+</script>
+</body>
+</html>
