@@ -333,7 +333,7 @@ class ProcessManager:
         
         # 动态构建命令（如 build_index/export 需从配置读取路径）
         if cmd is None and action == "build_index":
-            cfg = _load_config_full(strict=False)
+            cfg = _load_config_full(auto_create=False)
             photo_dir = cfg.get("paths", {}).get("photo_dir", "")
             index_file = cfg.get("paths", {}).get("index_file", "")
             cmd = [sys.executable, "build_index.py", photo_dir, "-o", index_file]
