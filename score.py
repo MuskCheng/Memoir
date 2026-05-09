@@ -377,6 +377,16 @@ def parse_json_response(raw):
     return None
 
 # ─── 文件扫描 ─────────────────────────────────────────────────────
+def _convert_host_path(file_path):
+    """将宿主机路径转换为容器内路径（Docker 环境）"""
+    import re
+    m = re.match(r'^([A-Za-z]):[/\\](.+)$', file_path)
+    if m:
+        relative_path = m.group(2).replace('\\', '/')
+        container_photo_dir = os.environ.get("PHOTO_DIR", "/photos")
+        return f"{container_photo_dir}/{relative_path}"
+    return file_path
+
 def scan_photos(index_file, db: ScoreDB):
     """扫描索引文件，发现新照片"""
     if not os.path.exists(index_file):
@@ -401,7 +411,10 @@ def scan_photos(index_file, db: ScoreDB):
             
             shoot_date = parts[0].strip()
             file_path = parts[1].strip()
-            
+
+            # 转换宿主机路径为容器内路径
+            file_path = _convert_host_path(file_path)
+
             if not os.path.exists(file_path):
                 continue
             
