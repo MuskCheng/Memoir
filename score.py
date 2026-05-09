@@ -377,6 +377,10 @@ def parse_json_response(raw):
     return None
 
 # ─── 文件扫描 ─────────────────────────────────────────────────────
+def _normalize_path(path):
+    """标准化路径为正斜杠格式（统一分隔符）"""
+    return path.replace('\\', '/')
+
 def _convert_host_path(file_path):
     """将宿主机路径转换为容器内路径（Docker 环境）"""
     import re
@@ -410,10 +414,20 @@ def scan_photos(index_file, db: ScoreDB):
                 continue
             
             shoot_date = parts[0].strip()
-            file_path = parts[1].strip()
+            original_path = parts[1].strip()
 
             # 转换宿主机路径为容器内路径
-            file_path = _convert_host_path(file_path)
+            file_path = _convert_host_path(original_path)
+            
+            # 标准化路径格式（与 push.py 保持一致）
+            file_path = _normalize_path(file_path)
+            
+            # 标准化路径（统一分隔符，解决跨平台兼容问题）
+            file_path = os.path.normpath(file_path)
+            
+            # 记录路径转换日志（仅在路径发生变化时）
+            if file_path != original_path:
+                log.debug(f"路径转换: {original_path} -> {file_path}")
 
             if not os.path.exists(file_path):
                 continue

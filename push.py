@@ -126,7 +126,8 @@ def load_score_db():
         
         score_map = {}
         for row in rows:
-            score_map[row["file_path"]] = {
+            norm_path = _normalize_path(row["file_path"])
+            score_map[norm_path] = {
                 "score": row["vlm_score"],
                 "scene": row["vlm_scene"]
             }
@@ -206,13 +207,15 @@ def pick_by_weighted_scores(candidates_by_year, shown_set, score_map):
     return last[0], last[1]
 
 # ─── 加载索引文件 ────────────────────────────────────────────────
+def _normalize_path(path):
+    """标准化路径为正斜杠格式（统一分隔符）"""
+    return path.replace('\\', '/')
+
 def _convert_host_path(file_path):
     """将宿主机路径转换为容器内路径（Docker 环境）"""
     import re
-    # 匹配 Windows 路径格式：D:/photos/xxx.jpg 或 D:\photos\xxx.jpg
     m = re.match(r'^([A-Za-z]):[/\\](.+)$', file_path)
     if m:
-        # 转换为容器内路径 /photos/xxx.jpg
         relative_path = m.group(2).replace('\\', '/')
         container_photo_dir = os.environ.get("PHOTO_DIR", "/photos")
         return f"{container_photo_dir}/{relative_path}"
@@ -241,6 +244,8 @@ def load_index(index_file):
 
             # 转换宿主机路径为容器内路径
             file_path = _convert_host_path(file_path)
+            # 标准化路径格式
+            file_path = _normalize_path(file_path)
 
             if not os.path.exists(file_path):
                 continue

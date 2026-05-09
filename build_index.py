@@ -157,7 +157,7 @@ def scan_photos(photo_dir, extensions=None):
                     continue
                 
                 if is_real and p_date:
-                    valid_records.append(f"{p_date}|{full_path}")
+                    valid_records.append(f"{p_date}|{full_path.replace(os.sep, '/')}")
                 
                 if processed_count % PROGRESS_INTERVAL == 0:
                     log.info(f"已处理 {processed_count} 张，收录 {len(valid_records)} 张真实照片...")
