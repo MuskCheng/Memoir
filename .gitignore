@@ -45,3 +45,26 @@ config.json
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# 审计/检查报告（临时生成）
+CHECKLIST.md
+AUDIT_REPORT.md
+FIX_REPORT.md
+
+# 部署文档（一次性使用）
+DEPLOY_OPTIMIZATION.md
+MIRROR_SETUP.md
+NAS_OPTIMIZATION.md
+
+# 部署/调试脚本（一次性使用）
+docker-build.sh
+docker-mirror-setup.sh
+full-mirror-setup.sh
+ghcr-mirror-setup.sh
+deploy.sh
+quick-deploy.sh
+fix-port.sh
+diagnose.sh
+debug-webui.sh
+nas-setup.sh
+nas-monitor.sh

@@ -116,11 +116,9 @@ def _is_animated_webp(img_path: str) -> bool:
                 if chunk_type == b'ANIM':
                     return True
                 
-                # 跳过块数据
-                f.seek(chunk_size, 1)
-                # 块大小需要是偶数
-                if chunk_size % 2 == 1:
-                    f.seek(1, 1)
+                current_pos = f.tell()
+                chunk_total = chunk_size + (1 if chunk_size % 2 == 1 else 0)
+                f.seek(min(chunk_total, os.path.getsize(img_path) - current_pos), 1)
             
             return False
     except Exception:
@@ -152,8 +150,9 @@ def _is_animated_png(img_path: str) -> bool:
                 if chunk_type == b'acTL':
                     return True
                 
-                # 跳过块数据 + CRC
-                f.seek(chunk_length + 4, 1)
+                current_pos = f.tell()
+                chunk_total = chunk_length + 4
+                f.seek(min(chunk_total, os.path.getsize(img_path) - current_pos), 1)
             
             return False
     except Exception:
@@ -269,18 +268,18 @@ def analyze_image_quality(img_path: str) -> dict:
     filter_category = "photo"  # 默认为照片
 
     # 1. 文件存在检查
-    if not os.path.exists(img_path):
+    try:
+        file_size = os.path.getsize(img_path)
+    except OSError:
         return {
             "rule_pass": False,
             "rule_enabled": True,
-            "reject_reasons": ["文件不存在"],
+            "reject_reasons": ["文件不存在或无法访问"],
             **{k: None for k in ["file_size", "width", "height",
                                   "aspect_ratio", "blur_score",
                                   "brightness", "color_variance"]},
             "filter_category": "not_found",
         }
-
-    file_size = os.path.getsize(img_path)
     filename = os.path.basename(img_path)
     
     # 2. 文件大小检查

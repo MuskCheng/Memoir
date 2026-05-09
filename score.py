@@ -82,7 +82,7 @@ class ScoreDB:
     def __init__(self, db_path=None):
         self.db_path = db_path or CFG.get("paths", {}).get("score_db", 
                                                           SCRIPT_DIR / "zectrix_scores.sqlite")
-        self.conn = sqlite3.connect(str(self.db_path))
+        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._init_tables()
         log.info(f"数据库已连接: {self.db_path}")
@@ -276,7 +276,9 @@ def call_vlm(img_path, retries=None):
     timeout = ollama_cfg.get("timeout", default_ollama.get("timeout", 200))
     
     # 构建 API 地址
-    if api_endpoint.startswith("/"):
+    if api_endpoint.startswith("http://") or api_endpoint.startswith("https://"):
+        url = api_endpoint
+    elif api_endpoint.startswith("/"):
         url = ollama_url + api_endpoint
     else:
         url = ollama_url + "/" + api_endpoint
@@ -336,7 +338,7 @@ def call_vlm(img_path, retries=None):
                     },
                 }
             
-            resp = requests.post(url, json=payload, timeout=timeout)
+            resp = requests.post(url, json=payload, timeout=timeout, verify=True)
             resp.raise_for_status()
             d = resp.json()
             

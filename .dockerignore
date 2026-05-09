@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+*.so
+*.egg-info
+dist/
+build/
+venv/
+.ven/
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+.env
+
+# 数据和运行时
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# 文档和配置
+docs/
+*.md
+LICENSE
+.vscode/
+.idea/
+.claude/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 临时文件
+*.tmp
+*.swp
+*.swo

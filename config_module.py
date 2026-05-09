@@ -213,6 +213,12 @@ def load_config(config_file=None, auto_create=True):
     """
     cfg_file = Path(config_file) if config_file else CONFIG_FILE
 
+    # 如果路径是目录，删除它并重新创建文件
+    if cfg_file.exists() and cfg_file.is_dir():
+        import shutil
+        shutil.rmtree(cfg_file)
+        print(f"已删除目录: {cfg_file}（将重新创建为配置文件）", file=sys.stderr)
+
     if not cfg_file.exists():
         if auto_create:
             cfg = copy.deepcopy(DEFAULT_CONFIG)
@@ -220,10 +226,15 @@ def load_config(config_file=None, auto_create=True):
             print(f"已自动生成配置文件: {cfg_file}", file=sys.stderr)
         else:
             cfg = copy.deepcopy(DEFAULT_CONFIG)
+        _apply_env_overrides(cfg)
+        _auto_detect(cfg)
         return cfg
 
-    with open(cfg_file, "r", encoding="utf-8") as f:
-        cfg = json.load(f)
+    try:
+        with open(cfg_file, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"配置文件 {cfg_file} 格式错误，无法解析 JSON: {e}")
 
     # ── 环境变量覆盖 ──────────────────────────────────────
     _apply_env_overrides(cfg)

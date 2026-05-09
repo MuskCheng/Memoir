@@ -1,40 +1,38 @@
-version: "3.9"
-
 services:
   # ─── AI 推理引擎 ──────────────────────────────────────────────
+  # 针对 i7-9700 (8核)、16GB 内存的 NAS 优化配置
   ollama:
-    image: ollama/ollama:latest
+    image: docker.1ms.run/ollama/ollama:latest
     container_name: memoir-ollama
     restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ollama_data:/root/.ollama
       - ${PHOTO_DIR:-./photos}:/photos:ro
     environment:
-      - OLLAMA_NUM_PARALLEL=1
-      - OLLAMA_KEEP_ALIVE=24h
-    # 启用 NVIDIA GPU 加速（可选）：
-    # 1. 安装 NVIDIA Container Toolkit
-    # 2. 取消下面 deploy 部分的注释
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_KEEP_ALIVE=10m
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_NUM_THREAD=8
+    deploy:
+      resources:
+        limits:
+          memory: 14G
     healthcheck:
       test: ["CMD", "ollama", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     networks:
       - memoir_net
 
   # ─── 照片推送系统 ──────────────────────────────────────────────
   # config.json 可选：首次运行自动生成，或通过环境变量覆盖配置
+  # 使用方式: docker compose --profile cli run --rm memoir
   memoir:
     build: .
     image: muskcheng/memoir:latest
@@ -43,7 +41,6 @@ services:
     volumes:
       - ${PHOTO_DIR:-./photos}:/photos:ro
       - ${DATA_DIR:-./data}:/data
-      - ${CONFIG_FILE:-./config.json}:/app/config.json
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - PHOTO_DIR=/photos
@@ -56,6 +53,10 @@ services:
         condition: service_healthy
     networks:
       - memoir_net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     profiles:
       - cli
 
@@ -70,7 +71,6 @@ services:
     volumes:
       - ${PHOTO_DIR:-./photos}:/photos:ro
       - ${DATA_DIR:-./data}:/data
-      - ${CONFIG_FILE:-./config.json}:/app/config.json
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
       - PHOTO_DIR=/photos
@@ -85,6 +85,16 @@ services:
         condition: service_healthy
     networks:
       - memoir_net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   ollama_data:

@@ -61,6 +61,12 @@ def _add_no_cache(response):
 
 def load_config():
     """WebUI 专用的轻量配置加载（不触发 sys.exit）"""
+    # 如果配置文件是目录，删除它
+    if CONFIG_FILE.exists() and CONFIG_FILE.is_dir():
+        import shutil
+        shutil.rmtree(CONFIG_FILE)
+        print(f"已删除目录: {CONFIG_FILE}（将重新创建为配置文件）")
+
     try:
         return _load_config_full(auto_create=False)
     except Exception:
@@ -95,10 +101,10 @@ def get_db_stats():
             cur.execute("SELECT COUNT(*) FROM photo_scores WHERE vlm_error IS NOT NULL")
             stats["error"] = cur.fetchone()[0]
             conn.close()
-        except:
+        except Exception:
             pass
         return stats
-    except:
+    except Exception:
         return {"total": 0, "done": 0, "pending": 0, "error": 0}
 
 def get_index_count():
@@ -110,7 +116,7 @@ def get_index_count():
     try:
         with open(idx, "r", encoding="utf-8") as f:
             return sum(1 for line in f if line.strip())
-    except:
+    except Exception:
         return 0
 
 def run_command(cmd):
@@ -139,21 +145,23 @@ def run_command(cmd):
 def get_ollama_models():
     """获取 Ollama 可用模型列表"""
     cfg = load_config()
-    base_url = cfg.get("ollama", {}).get("base_url", "http://localhost:11434")
+    # Docker 环境优先使用环境变量
+    base_url = os.environ.get("OLLAMA_BASE_URL") or cfg.get("ollama", {}).get("base_url", "http://localhost:11434")
     try:
         resp = requests.get(f"{base_url}/api/tags", timeout=5)
         if resp.status_code == 200:
             models = resp.json().get("models", [])
             return [m["name"] for m in models]
         return []
-    except:
-        return []
+except Exception:
+            return []
 
 # ─── Ollama 启动检查 + 模型预热 ────────────────────────────────
 def check_ollama():
     """检查 Ollama 是否运行，返回状态信息"""
     cfg = load_config()
-    base_url = cfg.get("ollama", {}).get("base_url", "http://localhost:11434")
+    # Docker 环境优先使用环境变量，否则用配置文件
+    base_url = os.environ.get("OLLAMA_BASE_URL") or cfg.get("ollama", {}).get("base_url", "http://localhost:11434")
     model = cfg.get("ollama", {}).get("model", "qwen2.5vl:7b")
     
     status = {"running": False, "model_loaded": False, "error": None, "warmup": False}
@@ -179,7 +187,8 @@ def check_ollama():
 def warmup_ollama():
     """预热 Ollama 模型（发送轻量请求，减少首次推理延迟）"""
     cfg = load_config()
-    base_url = cfg.get("ollama", {}).get("base_url", "http://localhost:11434")
+    # Docker 环境优先使用环境变量
+    base_url = os.environ.get("OLLAMA_BASE_URL") or cfg.get("ollama", {}).get("base_url", "http://localhost:11434")
     model = cfg.get("ollama", {}).get("model", "qwen2.5vl:7b")
     
     print(f"  🚀 预热模型: {model} ...", end="", flush=True)
@@ -415,7 +424,7 @@ class ProcessManager:
             count = cur.fetchone()[0]
             conn.close()
             return count
-        except:
+        except Exception:
             return 0
     
     def get_output(self, lines=50):
@@ -480,6 +489,26 @@ def api_update_config():
         new_cfg = request.get_json()
         if not new_cfg:
             return jsonify({"success": False, "error": "无效的 JSON"}), 400
+
+        # 同步 push_settings 到 devices[0]
+        ps = new_cfg.get("push_settings", {})
+        devices = new_cfg.get("devices", [])
+        if ps and devices:
+            devices[0]["device_mac"] = ps.get("device_mac", "")
+            devices[0]["api_key"] = ps.get("api_key", "")
+            devices[0]["api_base"] = ps.get("api_base", "")
+            devices[0]["page_id"] = ps.get("page_id", 1)
+        elif ps and not devices:
+            # 没有 devices 数组时，从 push_settings 创建
+            new_cfg["devices"] = [{
+                "name": "默认设备",
+                "device_mac": ps.get("device_mac", ""),
+                "api_key": ps.get("api_key", ""),
+                "api_base": ps.get("api_base", "https://api.zectrix.com/open/v1/devices"),
+                "page_id": ps.get("page_id", 1),
+                "dither": True,
+            }]
+
         _save_config(new_cfg)
         return jsonify({"success": True, "message": "配置已保存"})
     except Exception as e:
@@ -735,10 +764,10 @@ def api_scored_photos():
         sort_map = {
             "score_desc": "vlm_score DESC",
             "score_asc": "vlm_score ASC",
-            "date_desc": "shoot_date DESC NULLS LAST",
-            "date_asc": "shoot_date ASC NULLS LAST",
-            "scored_at_desc": "scored_at DESC NULLS LAST",
-            "scored_at_asc": "scored_at ASC NULLS LAST",
+            "date_desc": "CASE WHEN shoot_date IS NULL THEN 1 ELSE 0 END, shoot_date DESC",
+            "date_asc": "CASE WHEN shoot_date IS NULL THEN 1 ELSE 0 END, shoot_date ASC",
+            "scored_at_desc": "CASE WHEN scored_at IS NULL THEN 1 ELSE 0 END, scored_at DESC",
+            "scored_at_asc": "CASE WHEN scored_at IS NULL THEN 1 ELSE 0 END, scored_at ASC",
         }
         order_by = sort_map.get(sort, "scored_at DESC")
         
@@ -820,8 +849,10 @@ def _is_docker_default_path(path):
     """判断路径是否仍为 Docker 默认值（未初始化）"""
     if not path:
         return True
-    docker_patterns = ["/data", "/app/", "/photos", "/mnt/"]
-    return any(path.startswith(p) for p in docker_patterns)
+    # 仅检查完全为空或明显是占位符的路径
+    # /photos 是 Docker 挂载的有效路径，不应视为未初始化
+    placeholder_patterns = ["", "/app/", "/mnt/"]
+    return any(path == p or path.startswith(p) for p in placeholder_patterns if p)
 
 @app.route("/api/setup/status")
 def api_setup_status():
@@ -830,34 +861,30 @@ def api_setup_status():
     paths = cfg.get("paths", {})
     photo_dir = paths.get("photo_dir", "")
     index_file = paths.get("index_file", "")
-    
+
     need_setup = False
     reasons = []
-    
-    # 1. 检查 photo_dir 是否还是 Docker 默认路径
+
+    # 1. 检查 photo_dir 是否已配置
     if _is_docker_default_path(photo_dir):
         need_setup = True
         reasons.append("照片目录未配置")
-    
-    # 2. 检查索引文件是否存在且有内容
-    if index_file and Path(index_file).exists() and Path(index_file).stat().st_size > 0:
-        index_ok = True
-    else:
-        need_setup = True
-        reasons.append("照片索引未建立")
-    
-    # 3. 检查是否有定时任务
+
+    # 2. 检查是否有定时任务
     from webui.scheduler import load_tasks
     tasks = load_tasks()
     if not tasks:
         need_setup = True
         reasons.append("定时任务未配置")
-    
+
+    # 索引文件不存在不算初始化未完成，用户可以在主界面手动建立索引
+    index_ok = index_file and Path(index_file).exists() and Path(index_file).stat().st_size > 0
+
     return jsonify({
         "need_setup": need_setup,
         "reasons": reasons,
         "photo_dir": photo_dir,
-        "index_ok": index_file and Path(index_file).exists() and Path(index_file).stat().st_size > 0,
+        "index_ok": index_ok,
         "tasks_count": len(tasks),
     })
 
@@ -865,13 +892,13 @@ def api_setup_status():
 def api_setup_apply():
     """执行初始化：自动检测目录、建立索引、创建默认定时任务"""
     results = {"photo_dir": "", "index": False, "tasks": [], "errors": []}
-    
+
     try:
         # 1. 自动检测照片目录
         from webui.health import check_photo_dir
         data = request.get_json() or {}
         photo_dir = data.get("photo_dir", "")
-        
+
         if not photo_dir:
             # 自动检测
             pd_result = check_photo_dir(load_config())
@@ -879,7 +906,12 @@ def api_setup_apply():
                 photo_dir = pd_result["path"]
             else:
                 photo_dir = os.environ.get("USERPROFILE", "") + "\\Pictures"
-        
+
+        # Docker 环境：将用户输入的路径映射到容器内挂载点 /photos
+        if Path("/photos").exists() and not photo_dir.startswith("/photos"):
+            photo_dir = "/photos"
+            print(f"  🐳 Docker 环境: 使用容器内挂载路径 /photos")
+
         # 写入配置
         cfg = load_config()
         cfg.setdefault("paths", {})["photo_dir"] = photo_dir
@@ -888,6 +920,7 @@ def api_setup_apply():
         cfg["paths"]["score_db"] = str(SCRIPT_DIR / "data" / "zectrix_scores.sqlite")
         _save_config(cfg)
         results["photo_dir"] = photo_dir
+        print(f"  ✅ 配置已保存: photo_dir={photo_dir}")
         
         # 2. 建立索引（如果勾选）
         if data.get("build_index", True):
@@ -935,16 +968,28 @@ def api_setup_apply():
 # ─── 启动 ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # 如果配置文件是目录，删除它
+    if CONFIG_FILE.exists() and CONFIG_FILE.is_dir():
+        import shutil
+        shutil.rmtree(CONFIG_FILE)
+        print(f"  🗑️ 已删除目录: {CONFIG_FILE}")
+
+    # 自动创建配置文件（如果不存在）
+    if not CONFIG_FILE.exists():
+        print("  📝 首次启动，自动创建配置文件...")
+        _load_config_full(auto_create=True)
+        print(f"   配置文件已创建: {CONFIG_FILE}")
+
     # 启动调度器（BackgroundScheduler 需在 __main__ 中启动）
     scheduler.start()
-    
+
     port = int(os.environ.get("WEBUI_PORT", 5000))
     host = os.environ.get("WEBUI_HOST", "0.0.0.0")
     print(f"🌐 Memoir Web 管理后台启动: http://0.0.0.0:{port}")
     print(f"   配置文件: {CONFIG_FILE}")
     print(f"   数据库: {DB_PATH}")
     print(f"   定时任务: {TASKS_FILE}")
-    
+
     # 检查 Ollama 连接
     print("  🔍 检查 Ollama ...", end=" ", flush=True)
     ostatus = check_ollama()
@@ -959,5 +1004,5 @@ if __name__ == "__main__":
     else:
         print(f"❌ ({ostatus.get('error', '未知错误')})")
         print("  ⚠️ 请确保 Ollama 已启动: ollama serve")
-    
+
     app.run(host=host, port=port, debug=False)

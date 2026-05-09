@@ -409,6 +409,7 @@ def run_health_check(cfg=None, auto_fix=True):
                     results["model"]["ok"] = True
                     results["model"]["msg"] = "已自动拉取"
                     results["model"]["pulled"] = True
+                    warmup_model(cfg)
 
     # 5. 照片目录
     pd = check_photo_dir(cfg)

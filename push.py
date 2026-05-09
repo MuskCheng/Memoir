@@ -320,11 +320,17 @@ def add_watermark(img, shoot_date):
         log.warning(f"添加水印失败: {e}")
         return img
 
+MAX_IMAGE_SIZE = 50 * 1024 * 1024
+
 def process_image(img_path, output_path, shoot_date, cfg=None):
     """处理图片：缩放 + 添加水印"""
     if cfg is None:
         cfg = CFG
     try:
+        file_size = os.path.getsize(img_path)
+        if file_size > MAX_IMAGE_SIZE:
+            log.error(f"图片文件过大 ({file_size / 1024 / 1024:.1f}MB)，跳过: {img_path}")
+            return False
         img = Image.open(img_path)
 
         # 转换色彩模式
@@ -370,9 +376,14 @@ def push_to_device(img_path, device_config=None):
         return False
     
     url = f"{api_base}/{device_mac}/display/image"
-    
+
+    safe_img_path = os.path.realpath(img_path)
+    if not os.path.isfile(safe_img_path):
+        log.error(f"文件不存在或路径无效: {img_path}")
+        return False
+
     try:
-        with open(img_path, "rb") as f:
+        with open(safe_img_path, "rb") as f:
             files = {"image": f}
             data = {
                 "pageId": page_id,
@@ -380,10 +391,13 @@ def push_to_device(img_path, device_config=None):
             }
             headers = {"Authorization": f"Bearer {api_key}"}
             
+            masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "****"
+            log.debug(f"请求头 Authorization: Bearer {masked_key}")
+
             resp = requests.post(url, files=files, data=data, headers=headers, timeout=30)
             resp.raise_for_status()
-            
-            log.info(f"推送到 '{device_config.get('name', '?')}' 成功: {resp.json()}")
+
+            log.info(f"推送到 '{device_config.get('name', '?')}' 成功")
             return True
     except Exception as e:
         log.error(f"推送到 '{device_config.get('name', '?')}' 失败: {e}")
