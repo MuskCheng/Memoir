@@ -153,8 +153,8 @@ def get_ollama_models():
             models = resp.json().get("models", [])
             return [m["name"] for m in models]
         return []
-except Exception:
-            return []
+    except Exception:
+        return []
 
 # ─── Ollama 启动检查 + 模型预热 ────────────────────────────────
 def check_ollama():
