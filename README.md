@@ -12,7 +12,7 @@
 |------|------|
 | 🌐 **浏览器管理** | 无需学习命令行，打开浏览器即可操作全部功能 |
 | 🤖 **AI 识图评分** | 基于 qwen2.5vl:7b 理解照片内容，自动评分 |
-| ⚡ **一键全流程** | 点一次按钮完成「建索引 + AI 评分」，无需分步操作 |
+| ⚡ **一键全流程** | 点一次按钮完成「建索引 + AI 评分 + 选片推送」，无需分步操作 |
 | 📑 **首次启动引导** | 首次运行自动弹出设置向导，引导配置路径、建索引、创建定时任务 |
 | 🎯 **规则过滤** | 模糊/截屏/表情包/过暗过曝 — 低质量照片自动跳过 |
 | ⚖️ **年份公平选片** | 兼顾各年份照片，不让某一年垄断推送 |
@@ -110,7 +110,7 @@ Memoir 的所有功能都可以通过浏览器完成，无需接触命令行。
 
 | 按钮 | 作用 | 使用时机 |
 |------|------|---------|
-| **⚡ 一键全流程** | 建立索引 + AI 评分（推荐） | **首次使用**或新增大量照片 |
+| **⚡ 一键全流程** | 建索引 + AI 评分 + 选片推送（推荐） | **首次使用**或新增大量照片 |
 | 📑 建立索引 | 仅扫描目录，更新照片清单 | 新增照片后 |
 | 🤖 AI评分（全量） | 对所有照片逐个 AI 评分 | 需要重新评全部照片 |
 | ⏳ 增量评分 | 只评未评过的新照片 | **日常使用** |
@@ -129,8 +129,8 @@ Memoir 的所有功能都可以通过浏览器完成，无需接触命令行。
 
 | 推荐任务 | 建议时间 | 说明 |
 |---------|---------|------|
-| 一键全流程 `score_full` | 每天 3:00 | 建索引 + 增量评分 |
-| 选片并推送 `push_push` | 每天 8:00 | 自动推送照片到设备 |
+| 一键全流程 `score_full` | 每天 3:00 | 建索引 + 增量评分 + 选片推送 |
+| 选片并推送 `push_push` | 每天 8:00 | 仅选片推送（已有评分时） |
 
 > 直接在浏览器里创建，支持 cron 表达式、间隔、一次性三种调度方式。
 
@@ -161,9 +161,12 @@ Memoir 的所有功能都可以通过浏览器完成，无需接触命令行。
 ```
 memoir/
 ├── docker-compose.yml     # 服务编排（启动全部服务）
+├── .env                   # 环境变量配置（可选，从 .env.example 复制）
 ├── photos/                # 你的照片目录（挂载）
-├── data/                  # 数据目录（自动创建）
-└── config.json            # 配置文件（首次运行自动生成，可选）
+└── data/                  # 数据目录（自动创建）
+    ├── config.json        #   配置文件（首次运行自动生成）
+    ├── zectrix_scores.sqlite  # 评分数据库
+    └── zectrix_photo_index.txt  # 照片索引
 ```
 
 ### 环境变量
@@ -248,7 +251,7 @@ python webui\app.py
     "score_db": "/data/zectrix_scores.sqlite"
   },
   "ollama": {
-    "base_url": "http://localhost:11434",
+    "base_url": "http://ollama:11434",   // Docker 内使用服务名；本地运行改为 http://localhost:11434
     "model": "qwen2.5vl:7b",
     "num_thread": 0,                     // 0=自动检测CPU核心数
     "temperature": 0.7
@@ -270,6 +273,9 @@ python webui\app.py
 所有 CLI 命令均可在 Web UI「🔧 操作」页面一键完成。以下供自动化脚本或排查问题使用。
 
 ```bash
+# 一键全流程（建索引 + 评分 + 选片推送）
+python score.py auto --build-index --push
+
 # 建立索引
 python build_index.py /photos -o /data/index.txt
 
@@ -306,6 +312,8 @@ memoir/
 ├── push.py                  # 选片 + 推送
 ├── filter.py                # 规则过滤
 ├── build_index.py           # 照片扫描
+├── config_module.py         # 统一配置模块
+├── env_detect.py            # 环境自动检测
 ├── Dockerfile               # Docker 构建
 ├── docker-compose.yml       # Docker 编排
 ├── webui/                   # 🌐 Web 管理面板（主推入口）
@@ -347,7 +355,7 @@ memoir/
 
 ### 怎么排查问题？
 1. 看 Web UI「📋 日志」页（最新在前）
-2. 检查 Ollama：`curl http://localhost:11434/api/tags`
+2. 检查 Ollama：`curl http://localhost:11434/api/tags`（Docker 内用 `http://ollama:11434`）
 3. Web UI「🔧 操作」→ 试跑「🧪 AI评分（试跑10张）」
 
 ### 数据库在哪？
