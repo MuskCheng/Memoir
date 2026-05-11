@@ -21,8 +21,14 @@ from pathlib import Path
 
 # ─── 路径 ───────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent
-CONFIG_FILE = SCRIPT_DIR / "config.json"
 VERSION_FILE = SCRIPT_DIR / "VERSION"
+
+# 配置文件路径：Docker 环境下存放在 DATA_DIR（持久化卷），本地开发存放在项目目录
+_data_dir = os.environ.get("DATA_DIR")
+if _data_dir and Path(_data_dir).is_dir():
+    CONFIG_FILE = Path(_data_dir) / "config.json"
+else:
+    CONFIG_FILE = SCRIPT_DIR / "config.json"
 
 
 def get_version():
@@ -171,13 +177,13 @@ DEFAULT_CONFIG = {
             "api_key": "",
             "dither": True,
             "page_id": 1,
-            "api_base": "https://api.zectrix.com/open/v1/devices"
+            "api_base": "https://cloud.zectrix.com/open/v1/devices"
         }
     ],
     "push_settings": {
         "device_mac": "",
         "api_key": "",
-        "api_base": "https://api.zectrix.com/open/v1/devices",
+        "api_base": "https://cloud.zectrix.com/open/v1/devices",
         "page_id": 1,
         "dither": True,
         "cleanup_old_images": True,
@@ -255,7 +261,8 @@ def _apply_env_overrides(cfg):
     # Ollama
     if env.get("OLLAMA_BASE_URL"):
         cfg.setdefault("ollama", {})["base_url"] = env["OLLAMA_BASE_URL"]
-        cfg.setdefault("ollama", {})["api_endpoint"] = "/v1/chat/completions"
+    if env.get("OLLAMA_API_ENDPOINT"):
+        cfg.setdefault("ollama", {})["api_endpoint"] = env["OLLAMA_API_ENDPOINT"]
     if env.get("OLLAMA_MODEL"):
         cfg.setdefault("ollama", {})["model"] = env["OLLAMA_MODEL"]
     if env.get("OLLAMA_TIMEOUT"):
@@ -276,11 +283,33 @@ def _apply_env_overrides(cfg):
     if env.get("PHOTO_DIR"):
         cfg.setdefault("paths", {})["photo_dir"] = env["PHOTO_DIR"]
 
-    # 推送
+    # 推送（同时更新 devices 和 push_settings，确保兼容）
     if env.get("API_KEY"):
         cfg.setdefault("push_settings", {})["api_key"] = env["API_KEY"]
+        devices = cfg.get("devices", [])
+        if devices:
+            devices[0]["api_key"] = env["API_KEY"]
     if env.get("DEVICE_MAC"):
         cfg.setdefault("push_settings", {})["device_mac"] = env["DEVICE_MAC"]
+        devices = cfg.get("devices", [])
+        if devices:
+            devices[0]["device_mac"] = env["DEVICE_MAC"]
+
+    # 迁移：旧 API 地址自动更新
+    # Ollama 原生端点应为 /api/generate，旧版误设为 /v1/chat/completions 时自动修正
+    ollama_ep = cfg.get("ollama", {}).get("api_endpoint", "")
+    if ollama_ep == "/v1/chat/completions" and not env.get("OLLAMA_API_ENDPOINT"):
+        cfg.setdefault("ollama", {})["api_endpoint"] = "/api/generate"
+
+    # 迁移：旧 API 地址自动更新
+    _OLD_API = "api.zectrix.com"
+    _NEW_API = "cloud.zectrix.com"
+    ps = cfg.get("push_settings", {})
+    if _OLD_API in ps.get("api_base", ""):
+        ps["api_base"] = ps["api_base"].replace(_OLD_API, _NEW_API)
+    for d in cfg.get("devices", []):
+        if _OLD_API in d.get("api_base", ""):
+            d["api_base"] = d["api_base"].replace(_OLD_API, _NEW_API)
 
     # 日志
     if env.get("LOG_LEVEL"):

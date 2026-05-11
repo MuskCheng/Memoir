@@ -74,7 +74,7 @@ if not _DEFAULT_DEVICE:
         "name": "默认设备",
         "device_mac": ps.get("device_mac", ""),
         "api_key": ps.get("api_key", ""),
-        "api_base": ps.get("api_base", "https://api.zectrix.com/open/v1/devices"),
+        "api_base": ps.get("api_base", "https://cloud.zectrix.com/open/v1/devices"),
         "page_id": ps.get("page_id", 1),
         "dither": ps.get("dither", True),
     }]
@@ -125,15 +125,21 @@ def load_score_db():
         conn.close()
         
         score_map = {}
+        name_map = {}
         for row in rows:
-            norm_path = _normalize_path(row["file_path"])
-            score_map[norm_path] = {
+            rel_path = _to_relative(row["file_path"], PHOTO_DIR)
+            entry = {
                 "score": row["vlm_score"],
                 "scene": row["vlm_scene"]
             }
-        
-        log.info(f"已加载 {len(score_map)} 条评分数据")
-        return score_map
+            score_map[rel_path] = entry
+            # 文件名索引（跨平台兜底：目录结构不同时用文件名匹配）
+            fname = os.path.basename(rel_path)
+            if fname not in name_map:
+                name_map[fname] = entry
+
+        log.info(f"已加载 {len(score_map)} 条评分数据（{len(name_map)} 个唯一文件名）")
+        return {"by_path": score_map, "by_name": name_map}
     except Exception as e:
         log.error(f"加载评分数据库失败: {e}")
         return {}
@@ -166,12 +172,28 @@ def pick_by_weighted_scores(candidates_by_year, shown_set, score_map):
 
     # 收集所有候选照片，计算加权分数
     all_candidates = []
+    total_photos = 0
+    matched_by_path = 0
+    matched_by_name = 0
+    path_map = score_map.get("by_path", score_map) if isinstance(score_map, dict) and "by_path" in score_map else score_map
+    name_map = score_map.get("by_name", {}) if isinstance(score_map, dict) else {}
     for year, photos in candidates_by_year.items():
         for photo_path, shoot_date in photos:
-            score_entry = score_map.get(photo_path)
+            total_photos += 1
+            # 使用相对路径匹配评分数据（解决跨平台路径不一致问题）
+            rel_path = _to_relative(photo_path, PHOTO_DIR)
+            score_entry = path_map.get(rel_path)
             if not score_entry:
-                continue  # 只从已评分照片中选择
-            weight = get_weighted_score(score_entry, photo_path, shown_set)
+                # 兜底：用文件名匹配（目录结构不同时）
+                fname = os.path.basename(rel_path)
+                score_entry = name_map.get(fname)
+                if score_entry:
+                    matched_by_name += 1
+                else:
+                    continue
+            else:
+                matched_by_path += 1
+            weight = get_weighted_score(score_entry, rel_path, shown_set)
 
             # 年份公平：给历史年份更高权重
             year_bonus = 1.0
@@ -182,6 +204,22 @@ def pick_by_weighted_scores(candidates_by_year, shown_set, score_map):
 
             final_weight = weight * year_bonus
             all_candidates.append((photo_path, shoot_date, final_weight))
+
+    matched_photos = matched_by_path + matched_by_name
+    log.info(f"评分匹配: {matched_photos}/{total_photos} (路径:{matched_by_path} 文件名:{matched_by_name})")
+
+    # 路径匹配诊断：当完全无匹配时输出示例路径
+    if matched_photos == 0 and total_photos > 0 and path_map:
+        sample_idx = []
+        for photos in candidates_by_year.values():
+            for p, _ in photos[:2]:
+                sample_idx.append(f"  {p} -> {_to_relative(p, PHOTO_DIR)}")
+            if len(sample_idx) >= 3:
+                break
+        sample_db = [f"  {k}" for k in list(path_map.keys())[:3]]
+        log.error(f"photo_dir={PHOTO_DIR}")
+        log.error(f"索引相对路径示例:\n" + "\n".join(sample_idx))
+        log.error(f"数据库相对路径示例:\n" + "\n".join(sample_db))
 
     if not all_candidates:
         return None
@@ -221,6 +259,38 @@ def _convert_host_path(file_path):
         return f"{container_photo_dir}/{relative_path}"
     return file_path
 
+def _to_relative(file_path, photo_dir):
+    """将绝对路径转换为相对于 photo_dir 的相对路径。
+
+    确保不同环境（Windows/NAS）下同一张照片产生相同的相对路径。
+    - NAS:  /photos/work/vacation/img.jpg → work/vacation/img.jpg
+    - Win:  Z:/home/work/vacation/img.jpg → work/vacation/img.jpg
+    """
+    import re
+    norm = _normalize_path(file_path)
+    photo = _normalize_path(photo_dir).rstrip('/')
+
+    # 1. 直接前缀: /photos/vacation/img.jpg
+    if norm.startswith(photo + '/'):
+        return norm[len(photo) + 1:]
+
+    # 2. Windows 盘符: Z:/home/vacation/img.jpg
+    m = re.match(r'^[A-Za-z]:/(.+)$', norm)
+    if m:
+        after_drive = m.group(1)
+        # 优先匹配 photo_dir basename（如 /photos → photos）
+        photo_base = photo.rsplit('/', 1)[-1] if '/' in photo else photo
+        if after_drive.startswith(photo_base + '/'):
+            return after_drive[len(photo_base) + 1:]
+        # 去掉第一级目录（Windows 照片目录的 basename，如 home）
+        parts = after_drive.split('/', 1)
+        if len(parts) > 1:
+            return parts[1]
+        return after_drive
+
+    # 3. 兜底: 返回原路径
+    return norm
+
 def load_index(index_file):
     """加载索引文件，按年份分组，返回 {year: [(file_path, shoot_date), ...]}"""
     if not os.path.exists(index_file):
@@ -246,6 +316,10 @@ def load_index(index_file):
             file_path = _convert_host_path(file_path)
             # 标准化路径格式
             file_path = _normalize_path(file_path)
+
+            # 相对路径拼接 PHOTO_DIR（索引可能是相对路径）
+            if not os.path.isabs(file_path):
+                file_path = _normalize_path(os.path.join(PHOTO_DIR, file_path))
 
             if not os.path.exists(file_path):
                 continue
@@ -387,7 +461,7 @@ def push_to_device(img_path, device_config=None):
     
     api_key = device_config.get("api_key", "")
     device_mac = device_config.get("device_mac", "")
-    api_base = device_config.get("api_base", "https://api.zectrix.com/open/v1/devices")
+    api_base = device_config.get("api_base", "https://cloud.zectrix.com/open/v1/devices")
     page_id = device_config.get("page_id", 1)
     dither = device_config.get("dither", True)
     
@@ -404,15 +478,15 @@ def push_to_device(img_path, device_config=None):
 
     try:
         with open(safe_img_path, "rb") as f:
-            files = {"image": f}
+            files = {"images": f}
             data = {
                 "pageId": page_id,
                 "dither": "true" if dither else "false"
             }
-            headers = {"Authorization": f"Bearer {api_key}"}
-            
+            headers = {"X-API-Key": api_key}
+
             masked_key = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "****"
-            log.debug(f"请求头 Authorization: Bearer {masked_key}")
+            log.debug(f"请求头 X-API-Key: {masked_key}")
 
             resp = requests.post(url, files=files, data=data, headers=headers, timeout=30)
             resp.raise_for_status()
@@ -448,8 +522,9 @@ def get_history_image():
         log.error("没有可用的照片索引")
         return None
 
-    # 2. 加载已推送记录
+    # 2. 加载已推送记录（统一转为相对路径，确保跨平台兼容）
     shown_set = load_shown_set(SHOWN_FILE)
+    shown_set = {_to_relative(p, PHOTO_DIR) for p in shown_set}
 
     # 每年1月1日重置
     import time as _time
@@ -470,7 +545,8 @@ def get_history_image():
     selected_photo = None
     shoot_date = None
 
-    if score_map and USE_SCORE_RANKING:
+    has_scores = isinstance(score_map, dict) and (score_map.get("by_path") or score_map.get("by_name"))
+    if has_scores and USE_SCORE_RANKING:
         # 使用评分加权选片
         log.info("使用评分加权选片")
         result = pick_by_weighted_scores(candidates_by_year, shown_set, score_map)
@@ -480,7 +556,10 @@ def get_history_image():
         # 降级：随机选择（仅从已评分照片）
         log.info("降级：仅从已评分照片中随机选择")
         import random
-        scored_photos = [(p, sd) for photos in candidates_by_year.values() for p, sd in photos if p in score_map]
+        path_map = score_map.get("by_path", score_map) if isinstance(score_map, dict) and "by_path" in score_map else score_map
+        name_map = score_map.get("by_name", {}) if isinstance(score_map, dict) else {}
+        scored_photos = [(p, sd) for photos in candidates_by_year.values() for p, sd in photos
+                        if _to_relative(p, PHOTO_DIR) in path_map or os.path.basename(p) in name_map]
         if scored_photos:
             selected_photo, shoot_date = random.choice(scored_photos)
 
@@ -494,8 +573,8 @@ def get_history_image():
     if not process_image(selected_photo, OUTPUT_FILE, shoot_date):
         return None
 
-    # 6. 更新已推送记录
-    shown_set.add(selected_photo)
+    # 6. 更新已推送记录（保存相对路径，确保跨平台兼容）
+    shown_set.add(_to_relative(selected_photo, PHOTO_DIR))
     save_shown_set(SHOWN_FILE, shown_set)
 
     log.info("=" * 50)

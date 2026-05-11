@@ -22,6 +22,7 @@ import sqlite3
 import logging
 import argparse
 import signal
+import subprocess
 import io
 import requests
 from pathlib import Path
@@ -109,18 +110,72 @@ class ScoreDB:
             "SELECT 1 FROM photo_scores WHERE file_hash = ?", (file_hash,)
         ).fetchone()
         return row is not None
-    
-    def insert_pending(self, file_hash, file_path, file_name, file_size, mtime, 
+
+    def find_duplicate(self, file_name, file_size):
+        """按文件名+大小查找重复记录（跨平台迁移场景）"""
+        row = self.conn.execute(
+            "SELECT file_hash, file_path, vlm_done FROM photo_scores WHERE file_name = ? AND file_size = ?",
+            (file_name, file_size)
+        ).fetchone()
+        return row
+
+    def update_path(self, old_hash, new_hash, new_path):
+        """更新记录的哈希和路径（合并重复记录）"""
+        self.conn.execute(
+            "UPDATE photo_scores SET file_hash = ?, file_path = ? WHERE file_hash = ?",
+            (new_hash, new_path, old_hash)
+        )
+
+    def insert_pending(self, file_hash, file_path, file_name, file_size, mtime,
                       shoot_date=None, year=None, month=None, day=None):
         """插入待处理记录"""
         self.conn.execute(
-            """INSERT OR IGNORE INTO photo_scores 
-               (file_hash, file_path, file_name, file_size, mtime, 
+            """INSERT OR IGNORE INTO photo_scores
+               (file_hash, file_path, file_name, file_size, mtime,
                 shoot_date, year, month, day, vlm_done)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""",
             (file_hash, file_path, file_name, file_size, mtime,
              shoot_date, year, month, day)
         )
+
+    def cleanup_orphans(self, photo_dir):
+        """清理孤立记录：文件在磁盘上不存在的记录（含已评分）"""
+        # 获取磁盘上实际存在的文件名集合（用于文件名兜底匹配）
+        existing_names = set()
+        if photo_dir and os.path.isdir(photo_dir):
+            for root, dirs, files in os.walk(photo_dir):
+                dirs[:] = [d for d in dirs if d not in ("@eaDir", "#recycle", ".thumbnails", ".DS_Store", "@__thumb")]
+                for f in files:
+                    existing_names.add(f)
+
+        cursor = self.conn.execute(
+            "SELECT file_hash, file_path, file_name FROM photo_scores"
+        )
+        orphans = []
+        for row in cursor:
+            fpath = row["file_path"]
+            fname = row["file_name"] or os.path.basename(fpath)
+            # 检查完整路径是否存在
+            if os.path.exists(fpath):
+                continue
+            # 相对路径拼接 photo_dir 再检查
+            if photo_dir and not os.path.isabs(fpath):
+                full = os.path.normpath(os.path.join(photo_dir, fpath))
+                if os.path.exists(full):
+                    continue
+            # 文件名兜底：如果磁盘上有同名文件，保留记录
+            if fname in existing_names:
+                continue
+            orphans.append(row["file_hash"])
+
+        if orphans:
+            self.conn.executemany(
+                "DELETE FROM photo_scores WHERE file_hash = ?",
+                [(h,) for h in orphans]
+            )
+            self.conn.commit()
+            log.info(f"清理了 {len(orphans)} 条孤立记录（文件不存在）")
+        return len(orphans)
     
     def update_rule_result(self, file_hash, rule_result):
         """更新规则过滤结果"""
@@ -391,59 +446,96 @@ def _convert_host_path(file_path):
         return f"{container_photo_dir}/{relative_path}"
     return file_path
 
+def _to_relative(file_path, photo_dir):
+    """将绝对路径转换为相对于 photo_dir 的相对路径。
+
+    确保不同环境（Windows/NAS）下同一张照片产生相同的相对路径。
+    - NAS:  /photos/work/vacation/img.jpg → work/vacation/img.jpg
+    - Win:  Z:/home/work/vacation/img.jpg → work/vacation/img.jpg
+    """
+    import re
+    norm = _normalize_path(file_path)
+    photo = _normalize_path(photo_dir).rstrip('/')
+
+    # 1. 直接前缀: /photos/vacation/img.jpg
+    if norm.startswith(photo + '/'):
+        return norm[len(photo) + 1:]
+
+    # 2. Windows 盘符: Z:/home/vacation/img.jpg
+    m = re.match(r'^[A-Za-z]:/(.+)$', norm)
+    if m:
+        after_drive = m.group(1)
+        # 优先匹配 photo_dir basename（如 /photos → photos）
+        photo_base = photo.rsplit('/', 1)[-1] if '/' in photo else photo
+        if after_drive.startswith(photo_base + '/'):
+            return after_drive[len(photo_base) + 1:]
+        # 去掉第一级目录（Windows 照片目录的 basename，如 home）
+        parts = after_drive.split('/', 1)
+        if len(parts) > 1:
+            return parts[1]
+        return after_drive
+
+    # 3. 兜底: 返回原路径
+    return norm
+
 def scan_photos(index_file, db: ScoreDB):
     """扫描索引文件，发现新照片"""
     if not os.path.exists(index_file):
         log.error(f"索引文件不存在: {index_file}")
         return 0
-    
+
     extensions = set(CFG.get("photo_extensions", [".jpg", ".jpeg", ".png"]))
+    photo_dir = CFG.get("paths", {}).get("photo_dir", "/photos")
     new_count = 0
     skip_count = 0
-    
+
     log.info(f"开始扫描索引: {index_file}")
-    
+
     with open(index_file, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
-            
+
             parts = line.split("|")
             if len(parts) < 2:
                 continue
-            
+
             shoot_date = parts[0].strip()
             original_path = parts[1].strip()
 
             # 转换宿主机路径为容器内路径
             file_path = _convert_host_path(original_path)
-            
+
             # 标准化路径格式（与 push.py 保持一致）
             file_path = _normalize_path(file_path)
-            
+
             # 标准化路径（统一分隔符，解决跨平台兼容问题）
             file_path = os.path.normpath(file_path)
-            
+
+            # 相对路径拼接 photo_dir（索引可能是相对路径）
+            if not os.path.isabs(file_path):
+                file_path = os.path.normpath(os.path.join(photo_dir, file_path))
+
             # 记录路径转换日志（仅在路径发生变化时）
             if file_path != original_path:
                 log.debug(f"路径转换: {original_path} -> {file_path}")
 
             if not os.path.exists(file_path):
                 continue
-            
+
             try:
                 file_hash = db.file_hash(file_path)
                 if not file_hash:
                     continue
-                
+
                 if db.exists(file_hash):
                     skip_count += 1
                     continue
-                
+
                 stat = os.stat(file_path)
                 file_name = os.path.basename(file_path)
-                
+
                 # 解析日期
                 year, month, day = None, None, None
                 if shoot_date and len(shoot_date) >= 10:
@@ -452,11 +544,19 @@ def scan_photos(index_file, db: ScoreDB):
                         year, month, day = dt.year, dt.month, dt.day
                     except ValueError:
                         pass
-                
-                db.insert_pending(file_hash, file_path, file_name, stat.st_size, 
-                                stat.st_mtime, shoot_date, year, month, day)
+
+                # 去重：检查是否存在同名同大小的记录（跨平台迁移场景）
+                db_path = _to_relative(file_path, photo_dir)
+                dup = db.find_duplicate(file_name, stat.st_size)
+                if dup:
+                    # 合并：更新路径和哈希，保留已有评分
+                    db.update_path(dup["file_hash"], file_hash, db_path)
+                    log.debug(f"合并重复记录: {file_name}")
+                else:
+                    db.insert_pending(file_hash, db_path, file_name, stat.st_size,
+                                    stat.st_mtime, shoot_date, year, month, day)
                 new_count += 1
-                
+
             except (OSError, PermissionError) as e:
                 log.warning(f"无法访问 {file_path}: {e}")
     
@@ -723,12 +823,17 @@ def main():
     p_auto.add_argument("--index", help="索引文件路径")
     p_auto.add_argument("--limit", type=int, help="限制处理数量")
     p_auto.add_argument("--build-index", action="store_true", help="先建立/更新索引，再评分")
+    p_auto.add_argument("--push", action="store_true", help="评分完成后自动选片推送")
+    p_auto.add_argument("--device", default="", help="指定推送设备名称")
     
     # 重试命令
     sub.add_parser("retry", help="重试失败的照片")
     
     # 统计命令
     sub.add_parser("stats", help="查看统计")
+
+    # 清理命令
+    sub.add_parser("cleanup", help="清理孤立记录（文件不存在且未评分）")
     
     # 高分照片命令
     p_top = sub.add_parser("top", help="查看高分照片")
@@ -783,13 +888,36 @@ def main():
                     log.warning("索引完成: 0 张 (目录中无有效图片)")
             
             scan_photos(index_file, db)
+            # 自动清理孤立记录（文件不存在的记录，含已评分）
+            photo_dir = CFG.get("paths", {}).get("photo_dir", "/photos")
+            removed = db.cleanup_orphans(photo_dir)
+            if removed > 0:
+                log.info(f"已清理 {removed} 条孤立记录")
             process_pending(db, limit=args.limit)
+
+            # 评分完成后自动选片推送
+            if args.push:
+                log.info("=" * 50)
+                log.info("评分完成，开始选片推送...")
+                push_cmd = [sys.executable, "push.py", "push"]
+                if args.device:
+                    push_cmd.extend(["--device", args.device])
+                result = subprocess.run(push_cmd, capture_output=False)
+                if result.returncode != 0:
+                    log.error("推送失败")
+                else:
+                    log.info("推送完成")
         elif args.command == "retry":
             # 重置失败记录
             db.conn.execute("UPDATE photo_scores SET vlm_error = NULL WHERE vlm_error IS NOT NULL")
             db.commit()
             log.info("已重置失败记录")
             process_pending(db)
+        elif args.command == "cleanup":
+            photo_dir = CFG.get("paths", {}).get("photo_dir", "/photos")
+            removed = db.cleanup_orphans(photo_dir)
+            log.info(f"清理完成，移除 {removed} 条孤立记录")
+            show_stats(db)
         elif args.command == "stats":
             show_stats(db)
         elif args.command == "top":

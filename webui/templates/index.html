@@ -15,8 +15,11 @@
   --green: #22c55e;
   --red: #ef4444;
   --yellow: #eab308;
+  color-scheme: dark;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+select option { background: var(--card); color: var(--text); }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
@@ -551,7 +554,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <h2>🖼️ 已评分照片</h2>
         <p id="gallery-total">加载中...</p>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <input id="gallery-search" type="text" placeholder="🔍 搜索文件名/描述/标签"
+               style="width:180px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;outline:none;"
+               onkeydown="if(event.key==='Enter'){loadGallery();}">
         <select id="gallery-sort" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onchange="loadGallery()">
           <option value="scored_at_desc">最新评分</option>
           <option value="score_desc">评分最高</option>
@@ -562,7 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <select id="gallery-scene" class="btn btn-ghost" style="padding:6px 10px;font-size:13px;" onchange="loadGallery()">
           <option value="">全部场景</option>
         </select>
-        <input id="gallery-min-score" type="number" min="0" max="10" step="0.5" placeholder="最低分" 
+        <input id="gallery-min-score" type="number" min="0" max="10" step="0.5" placeholder="最低分"
                style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;" onchange="loadGallery()">
       </div>
     </div>
@@ -782,7 +788,7 @@ function loadConfig() {
       const opt = Array.from(sel.options).find(o => o.value === currentModel);
       if (opt) opt.selected = true;
     })
-    .catch(e => { showToast('加载配置失败', 'error'); });
+    .catch(e => { showToast('加载配置失败', 'error'); document.getElementById('config-preview').textContent = '加载失败: ' + e.message; });
   loadModels();
 }
 
@@ -1033,10 +1039,12 @@ function _fetchGallery() {
   const sort = document.getElementById('gallery-sort').value;
   const scene = document.getElementById('gallery-scene').value;
   const minScore = document.getElementById('gallery-min-score').value;
-  
+  const search = document.getElementById('gallery-search').value.trim();
+
   let url = `/api/scored-photos?sort=${sort}&limit=${GALLERY_LIMIT}&offset=${galleryOffset}`;
   if (scene) url += `&scene=${encodeURIComponent(scene)}`;
   if (minScore) url += `&min_score=${minScore}`;
+  if (search) url += `&search=${encodeURIComponent(search)}`;
   
   const grid = document.getElementById('gallery-grid');
   const moreBtn = document.getElementById('gallery-more');

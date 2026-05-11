@@ -33,7 +33,7 @@ PYTHON_EXE = sys.executable
 ACTION_MAP = {
     "score_trial": [PYTHON_EXE, "score.py", "auto", "--limit", "10"],
     "score_auto": [PYTHON_EXE, "score.py", "auto"],
-    "score_full": [PYTHON_EXE, "score.py", "auto", "--build-index"],
+    "score_full": [PYTHON_EXE, "score.py", "auto", "--build-index", "--push"],
     "score_run": [PYTHON_EXE, "score.py", "run"],
     "score_stats": [PYTHON_EXE, "score.py", "stats"],
     "push_select": [PYTHON_EXE, "push.py", "select"],

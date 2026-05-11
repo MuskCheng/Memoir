@@ -490,26 +490,43 @@ def api_update_config():
         if not new_cfg:
             return jsonify({"success": False, "error": "无效的 JSON"}), 400
 
+        # 以当前配置为基底，合并用户修改（避免覆盖环境变量修正过的值）
+        cur_cfg = _load_config_full(auto_create=False)
+
+        def _deep_merge(base, overlay):
+            """将 overlay 深度合并到 base，overlay 优先"""
+            for k, v in overlay.items():
+                if k in base and isinstance(base[k], dict) and isinstance(v, dict):
+                    _deep_merge(base[k], v)
+                else:
+                    base[k] = v
+            return base
+
+        cfg = _deep_merge(cur_cfg, new_cfg)
+
         # 同步 push_settings 到 devices[0]
-        ps = new_cfg.get("push_settings", {})
-        devices = new_cfg.get("devices", [])
+        ps = cfg.get("push_settings", {})
+        devices = cfg.get("devices", [])
         if ps and devices:
             devices[0]["device_mac"] = ps.get("device_mac", "")
             devices[0]["api_key"] = ps.get("api_key", "")
             devices[0]["api_base"] = ps.get("api_base", "")
             devices[0]["page_id"] = ps.get("page_id", 1)
         elif ps and not devices:
-            # 没有 devices 数组时，从 push_settings 创建
-            new_cfg["devices"] = [{
+            cfg["devices"] = [{
                 "name": "默认设备",
                 "device_mac": ps.get("device_mac", ""),
                 "api_key": ps.get("api_key", ""),
-                "api_base": ps.get("api_base", "https://api.zectrix.com/open/v1/devices"),
+                "api_base": ps.get("api_base", "https://cloud.zectrix.com/open/v1/devices"),
                 "page_id": ps.get("page_id", 1),
                 "dither": True,
             }]
 
-        _save_config(new_cfg)
+        # 确保环境变量覆盖和自动迁移生效
+        from config_module import _apply_env_overrides
+        _apply_env_overrides(cfg)
+
+        _save_config(cfg)
         return jsonify({"success": True, "message": "配置已保存"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
@@ -538,7 +555,7 @@ def api_run_action(action):
     device_name = (request.get_json(silent=True) or {}).get("device", "")
     
     allowed_async = {
-        "score_full": [sys.executable, "score.py", "auto", "--build-index"],
+        "score_full": [sys.executable, "score.py", "auto", "--build-index", "--push"],
         "score_auto": [sys.executable, "score.py", "auto"],
         "score_run": [sys.executable, "score.py", "run"],
         "score_stats": [sys.executable, "score.py", "stats"],
@@ -552,6 +569,8 @@ def api_run_action(action):
     # push 命令追加 --device（如果有）
     if action in ("push_push",) and device_name:
         allowed_async[action] = [sys.executable, "push.py", "push", "--device", device_name]
+    if action == "score_full" and device_name:
+        allowed_async[action] = [sys.executable, "score.py", "auto", "--build-index", "--push", "--device", device_name]
     
     if action not in allowed_async:
         return jsonify({"success": False, "error": f"未知操作: {action}"}), 400
@@ -742,9 +761,10 @@ def api_scored_photos():
         min_score = request.args.get("min_score", type=float)
         max_score = request.args.get("max_score", type=float)
         scene = request.args.get("scene", "")
+        search = request.args.get("search", "").strip()
         limit = min(request.args.get("limit", 50, type=int), 200)
         offset = request.args.get("offset", 0, type=int)
-        
+
         # ── WHERE 条件 ─────────────────────────────────────
         where = ["vlm_done = 1"]
         params = []
@@ -757,6 +777,10 @@ def api_scored_photos():
         if scene:
             where.append("vlm_scene = ?")
             params.append(scene)
+        if search:
+            where.append("(file_name LIKE ? OR vlm_desc LIKE ? OR vlm_tags LIKE ?)")
+            kw = f"%{search}%"
+            params.extend([kw, kw, kw])
         
         where_sql = " AND ".join(where)
         
@@ -979,6 +1003,13 @@ if __name__ == "__main__":
         print("  📝 首次启动，自动创建配置文件...")
         _load_config_full(auto_create=True)
         print(f"   配置文件已创建: {CONFIG_FILE}")
+
+    # 启动时同步配置：环境变量覆盖 + 自动迁移，修正旧配置中的过时值
+    try:
+        _cfg = _load_config_full(auto_create=False)
+        _save_config(_cfg)
+    except Exception:
+        pass
 
     # 启动调度器（BackgroundScheduler 需在 __main__ 中启动）
     scheduler.start()
