@@ -417,25 +417,66 @@ body::after {
   color: var(--accent);
 }
 .env-icon { font-size: 16px; }
+
+/* --- SVG icons --- */
+.ic {
+  width: 15px; height: 15px; flex-shrink: 0;
+  fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round;
+  vertical-align: -2px;
+}
+.ic-lg { width: 24px; height: 24px; vertical-align: 0; }
+.logo h1 .ic { width: 18px; height: 18px; color: var(--accent); filter: drop-shadow(0 0 8px rgba(0,229,255,.7)); vertical-align: -3px; }
+.nav-item .ic { width: 16px; height: 16px; }
+.nav-item.active .ic { filter: drop-shadow(0 0 6px rgba(0,229,255,.7)); }
+.header h2 .ic { width: 19px; height: 19px; color: var(--accent); filter: drop-shadow(0 0 8px rgba(0,229,255,.55)); vertical-align: -3px; margin-right: 2px; }
+.quick-icon .ic { width: 24px; height: 24px; }
+.is-green .quick-icon .ic { color: var(--green); filter: drop-shadow(0 0 6px rgba(0,255,157,.6)); }
+.is-blue .quick-icon .ic { color: var(--accent); filter: drop-shadow(0 0 6px rgba(0,229,255,.6)); }
+.btn .ic { width: 13px; height: 13px; }
+.action-card h4 .ic { width: 14px; height: 14px; color: var(--accent); vertical-align: -2px; margin-right: 4px; }
+.env-icon .ic { width: 16px; height: 16px; color: var(--accent); }
 </style>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<symbol id="i-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+<symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+<symbol id="i-pulse" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+<symbol id="i-image" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></symbol>
+<symbol id="i-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+<symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+<symbol id="i-trophy" viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></symbol>
+<symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></symbol>
+<symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+<symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+<symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect width="14" height="14" x="5" y="5" rx="2"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+<symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+</svg>
 
 <div class="layout">
 
 <!-- 侧边栏 -->
 <div class="sidebar">
   <div class="logo">
-    <h1>📸 Memoir</h1>
+    <h1><svg class="ic"><use href="#i-camera"/></svg> Memoir</h1>
     <p>ZecTrix Note4 管理后台</p>
   </div>
-  <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')">📊 面板</div>
-  <div class="nav-item" data-page="health" onclick="switchPage('health');loadHealth();">🩺 健康检查</div>
-  <div class="nav-item" data-page="tasks" onclick="switchPage('tasks');loadTasks();">⏰ 定时任务</div>
-  <div class="nav-item" data-page="config" onclick="switchPage('config');loadConfig();">⚙️ 配置</div>
-  <div class="nav-item" data-page="logs" onclick="switchPage('logs');loadLogs();">📋 日志</div>
-  <div class="nav-item" data-page="gallery" onclick="switchPage('gallery');loadGallery();">🖼️ 已评分</div>
-  <div class="nav-item" data-page="actions" onclick="switchPage('actions')">🔧 操作</div>
+  <div class="nav-item active" data-page="dashboard" onclick="switchPage('dashboard')"><svg class="ic"><use href="#i-gauge"/></svg> 面板</div>
+  <div class="nav-item" data-page="health" onclick="switchPage('health');loadHealth();"><svg class="ic"><use href="#i-pulse"/></svg> 健康检查</div>
+  <div class="nav-item" data-page="tasks" onclick="switchPage('tasks');loadTasks();"><svg class="ic"><use href="#i-clock"/></svg> 定时任务</div>
+  <div class="nav-item" data-page="config" onclick="switchPage('config');loadConfig();"><svg class="ic"><use href="#i-settings"/></svg> 配置</div>
+  <div class="nav-item" data-page="logs" onclick="switchPage('logs');loadLogs();"><svg class="ic"><use href="#i-file"/></svg> 日志</div>
+  <div class="nav-item" data-page="gallery" onclick="switchPage('gallery');loadGallery();"><svg class="ic"><use href="#i-image"/></svg> 已评分</div>
+  <div class="nav-item" data-page="actions" onclick="switchPage('actions')"><svg class="ic"><use href="#i-sliders"/></svg> 操作</div>
 </div>
 
 <!-- 初始化引导（首次启动时显示） -->
@@ -443,7 +484,7 @@ body::after {
   <div style="max-width:700px;margin:40px auto;padding:0 20px;">
     <!-- 头部 -->
     <div style="text-align:center;margin-bottom:32px;">
-      <h1 style="font-size:28px;margin-bottom:8px;">🚀 欢迎使用 Memoir</h1>
+      <h1 style="font-size:28px;margin-bottom:8px;"><svg class="ic"><use href="#i-zap"/></svg> 欢迎使用 Memoir</h1>
       <p style="color:var(--muted);font-size:14px;">ZecTrix Note4 岁月史书推送系统</p>
       <p style="color:var(--muted);font-size:13px;margin-top:4px;">首次启动，请完成以下初始化配置</p>
     </div>
@@ -459,7 +500,7 @@ body::after {
     <!-- 步骤 1: 照片目录 -->
     <div id="setup-step-1" class="setup-content active">
       <div class="card" style="padding:24px;">
-        <h3 style="margin-bottom:16px;">📸 照片目录配置</h3>
+        <h3 style="margin-bottom:16px;"><svg class="ic"><use href="#i-camera"/></svg> 照片目录配置</h3>
         <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">选择存储照片的目录，系统将扫描此目录建立索引</p>
 
         <div class="form-group">
@@ -472,7 +513,7 @@ body::after {
         </div>
 
         <div id="setup-env-photo" class="setup-env-badge" style="display:none;">
-          <span class="env-icon">📋</span>
+          <span class="env-icon"><svg class="ic"><use href="#i-file"/></svg></span>
           <span>检测到环境变量 PHOTO_DIR: <code id="setup-env-photo-val"></code></span>
           <button class="btn btn-ghost btn-sm" onclick="useEnvPhotoDir()">使用此值</button>
         </div>
@@ -489,7 +530,7 @@ body::after {
           <label>Ollama 服务地址</label>
           <input id="setup-ollama-url" placeholder="http://localhost:11434">
           <div id="setup-env-ollama" class="setup-env-badge" style="display:none;margin-top:6px;">
-            <span class="env-icon">📋</span>
+            <span class="env-icon"><svg class="ic"><use href="#i-file"/></svg></span>
             <span>环境变量: <code id="setup-env-ollama-val"></code></span>
             <button class="btn btn-ghost btn-sm" onclick="useEnvOllamaUrl()">使用</button>
           </div>
@@ -501,13 +542,13 @@ body::after {
             <select id="setup-ollama-model" style="flex:1;">
               <option value="">请先配置 Ollama 地址</option>
             </select>
-            <button class="btn btn-ghost btn-sm" onclick="setupLoadModels()">🔄 刷新</button>
+            <button class="btn btn-ghost btn-sm" onclick="setupLoadModels()"><svg class="ic"><use href="#i-refresh"/></svg> 刷新</button>
           </div>
           <div id="setup-ollama-status" style="font-size:11px;margin-top:6px;"></div>
         </div>
 
         <div id="setup-env-model" class="setup-env-badge" style="display:none;">
-          <span class="env-icon">📋</span>
+          <span class="env-icon"><svg class="ic"><use href="#i-file"/></svg></span>
           <span>环境变量 OLLAMA_MODEL: <code id="setup-env-model-val"></code></span>
           <button class="btn btn-ghost btn-sm" onclick="useEnvModel()">使用</button>
         </div>
@@ -517,7 +558,7 @@ body::after {
     <!-- 步骤 3: 推送配置 -->
     <div id="setup-step-3" class="setup-content" style="display:none;">
       <div class="card" style="padding:24px;">
-        <h3 style="margin-bottom:16px;">📡 推送设备配置</h3>
+        <h3 style="margin-bottom:16px;"><svg class="ic"><use href="#i-signal"/></svg> 推送设备配置</h3>
         <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">配置 ZecTrix Note4 设备推送参数（可选，稍后配置）</p>
 
         <div class="form-row">
@@ -532,7 +573,7 @@ body::after {
         </div>
 
         <div id="setup-env-push" class="setup-env-badge" style="display:none;">
-          <span class="env-icon">📋</span>
+          <span class="env-icon"><svg class="ic"><use href="#i-file"/></svg></span>
           <span>检测到环境变量: API_KEY, DEVICE_MAC</span>
           <button class="btn btn-ghost btn-sm" onclick="useEnvPushConfig()">使用</button>
         </div>
@@ -557,14 +598,14 @@ body::after {
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
             <input type="checkbox" id="setup-build-index" checked style="width:18px;height:18px;">
             <div>
-              <div style="font-weight:500;">📑 建立照片索引</div>
+              <div style="font-weight:500;"><svg class="ic"><use href="#i-database"/></svg> 建立照片索引</div>
               <div style="color:var(--muted);font-size:11px;">扫描照片目录，生成索引文件</div>
             </div>
           </label>
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
             <input type="checkbox" id="setup-create-tasks" checked style="width:18px;height:18px;">
             <div>
-              <div style="font-weight:500;">⏰ 创建定时任务</div>
+              <div style="font-weight:500;"><svg class="ic"><use href="#i-clock"/></svg> 创建定时任务</div>
               <div style="color:var(--muted);font-size:11px;">每天凌晨3点自动评分 | 每天早8点自动推送</div>
             </div>
           </label>
@@ -900,14 +941,14 @@ document.addEventListener('DOMContentLoaded', () => {
   <!-- ===== 面板页 ===== -->
   <div id="page-dashboard" class="page active">
     <div class="header">
-      <h2>📊 系统面板</h2>
+      <h2><svg class="ic"><use href="#i-gauge"/></svg> 系统面板</h2>
       <p id="dashboard-time">加载中...</p>
     </div>
 
     <!-- ⚡ 快捷操作 -->
     <div class="quick-actions">
       <div class="quick-card is-green">
-        <div class="quick-icon">⚡</div>
+        <div class="quick-icon"><svg class="ic ic-lg"><use href="#i-zap"/></svg></div>
         <div class="quick-info">
           <h4>一键全流程</h4>
           <p>建索引 → AI 评分，推荐日常使用</p>
@@ -915,7 +956,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <button class="btn btn-hero btn-hero-green" onclick="runLongTask('score_full')">立即执行</button>
       </div>
       <div class="quick-card is-blue">
-        <div class="quick-icon">📡</div>
+        <div class="quick-icon"><svg class="ic ic-lg"><use href="#i-signal"/></svg></div>
         <div class="quick-info">
           <h4>选片并推送</h4>
           <p>推送到设备 <span id="push-device-label-dash"></span></p>
@@ -928,7 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
 
     <div class="grid" id="stats-grid">
-      <div class="card"><div class="label">📑 索引照片</div><div class="value" id="stat-index-total">-</div></div>
+      <div class="card"><div class="label">索引照片</div><div class="value" id="stat-index-total">-</div></div>
       <div class="card"><div class="label">照片总数</div><div class="value" id="stat-total">-</div></div>
       <div class="card"><div class="label">已评分</div><div class="value" id="stat-done">-</div><div class="sub" id="stat-done-pct"></div></div>
       <div class="card"><div class="label">待处理</div><div class="value" id="stat-pending">-</div></div>
@@ -963,10 +1004,10 @@ document.addEventListener('DOMContentLoaded', () => {
     <!-- 实时进度 -->
     <div class="progress-section card" id="progress-section" style="display:none;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <h3 style="font-size:14px;">🔄 <span id="progress-title">任务执行中</span></h3>
+        <h3 style="font-size:14px;"><svg class="ic"><use href="#i-rotate"/></svg> <span id="progress-title">任务执行中</span></h3>
         <div>
           <span id="progress-status" style="font-size:12px;color:var(--green);">运行中</span>
-          <button class="btn btn-danger btn-sm" onclick="stopTask()" style="margin-left:8px;">⏹️ 停止</button>
+          <button class="btn btn-danger btn-sm" onclick="stopTask()" style="margin-left:8px;"><svg class="ic"><use href="#i-stop"/></svg> 停止</button>
         </div>
       </div>
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-bar"></div></div>
@@ -991,12 +1032,12 @@ document.addEventListener('DOMContentLoaded', () => {
   <div id="page-health" class="page">
     <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
       <div>
-        <h2>🩺 系统健康检查</h2>
+        <h2><svg class="ic"><use href="#i-pulse"/></svg> 系统健康检查</h2>
         <p>自动检测运行环境、依赖和配置状态</p>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-ghost" onclick="loadHealth()">🔄 刷新</button>
-        <button class="btn btn-green" onclick="runHealthFix()">🔧 一键修复</button>
+        <button class="btn btn-ghost" onclick="loadHealth()"><svg class="ic"><use href="#i-refresh"/></svg> 刷新</button>
+        <button class="btn btn-green" onclick="runHealthFix()"><svg class="ic"><use href="#i-wrench"/></svg> 一键修复</button>
       </div>
     </div>
 
@@ -1018,10 +1059,10 @@ document.addEventListener('DOMContentLoaded', () => {
   <div id="page-tasks" class="page">
     <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
       <div>
-        <h2>⏰ 定时任务管理</h2>
+        <h2><svg class="ic"><use href="#i-clock"/></svg> 定时任务管理</h2>
         <p>定时执行增量评分、推送等操作</p>
       </div>
-      <button class="btn btn-primary" onclick="openTaskModal()">➕ 新建任务</button>
+      <button class="btn btn-primary" onclick="openTaskModal()"><svg class="ic"><use href="#i-plus"/></svg> 新建任务</button>
     </div>
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
@@ -1037,7 +1078,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <!-- ===== 配置页 ===== -->
   <div id="page-config" class="page">
     <div class="header">
-      <h2>⚙️ 系统配置</h2>
+      <h2><svg class="ic"><use href="#i-settings"/></svg> 系统配置</h2>
       <p>修改后点击保存，重启容器生效</p>
     </div>
 
@@ -1062,7 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <select id="cfg-ollama-model" style="flex:1;">
               <option value="">加载模型列表中...</option>
             </select>
-            <button class="btn btn-ghost btn-sm" onclick="loadModels()">🔄 刷新</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadModels()"><svg class="ic"><use href="#i-refresh"/></svg> 刷新</button>
           </div>
         </div>
         <div class="form-group"><label>CPU 线程数</label><input id="cfg-num_thread" placeholder="4"></div>
@@ -1085,7 +1126,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div style="margin-top:20px;display:flex;gap:12px;">
           <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
-          <button class="btn btn-ghost" onclick="loadConfig()">🔄 刷新</button>
+          <button class="btn btn-ghost" onclick="loadConfig()"><svg class="ic"><use href="#i-refresh"/></svg> 刷新</button>
         </div>
       </div>
 
@@ -1100,10 +1141,10 @@ document.addEventListener('DOMContentLoaded', () => {
   <div id="page-logs" class="page">
     <div class="header" style="display:flex;justify-content:space-between;align-items:center;">
       <div>
-        <h2>📋 运行日志</h2>
+        <h2><svg class="ic"><use href="#i-file"/></svg> 运行日志</h2>
         <p>最近 200 行日志</p>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="loadLogs()">🔄 刷新</button>
+      <button class="btn btn-ghost btn-sm" onclick="loadLogs()"><svg class="ic"><use href="#i-refresh"/></svg> 刷新</button>
     </div>
     <div class="log-container" id="log-container">
       <div class="loading"><div class="spinner"></div>加载日志中...</div>
@@ -1114,7 +1155,7 @@ document.addEventListener('DOMContentLoaded', () => {
   <div id="page-gallery" class="page">
     <div class="header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
       <div>
-        <h2>🖼️ 已评分照片</h2>
+        <h2><svg class="ic"><use href="#i-image"/></svg> 已评分照片</h2>
         <p id="gallery-total">加载中...</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -1146,36 +1187,36 @@ document.addEventListener('DOMContentLoaded', () => {
   <!-- ===== 操作页 ===== -->
   <div id="page-actions" class="page">
     <div class="header">
-      <h2>🔧 快速操作</h2>
+      <h2><svg class="ic"><use href="#i-sliders"/></svg> 快速操作</h2>
       <p>执行常用操作，结果会显示在下方 <span id="pending-badge" style="display:none;color:var(--yellow);font-weight:600;">加载中...</span></p>
     </div>
     <div class="action-grid" id="action-grid">
       <div class="action-card">
-        <div class="info"><h4>🖼️ AI 评分（全量）</h4><p>处理所有待评分照片，支持实时进度</p></div>
+        <div class="info"><h4><svg class="ic"><use href="#i-image"/></svg>AI 评分（全量）</h4><p>处理所有待评分照片，支持实时进度</p></div>
         <button class="btn btn-primary btn-sm" onclick="runLongTask('score_auto')">执行</button>
       </div>
       <div class="action-card">
-        <div class="info"><h4>📈 查看统计</h4><p>评分进度与状态</p></div>
+        <div class="info"><h4><svg class="ic"><use href="#i-chart"/></svg>查看统计</h4><p>评分进度与状态</p></div>
         <button class="btn btn-ghost btn-sm" onclick="runAction('score_stats')">执行</button>
       </div>
       <div class="action-card">
-        <div class="info"><h4>🏆 高分照片</h4><p>Top 10 评分最高的照片</p></div>
+        <div class="info"><h4><svg class="ic"><use href="#i-trophy"/></svg>高分照片</h4><p>Top 10 评分最高的照片</p></div>
         <button class="btn btn-ghost btn-sm" onclick="runAction('score_top')">执行</button>
       </div>
       <div class="action-card">
-        <div class="info"><h4>⏳ 增量评分</h4><p>处理新增照片，支持实时进度</p></div>
+        <div class="info"><h4><svg class="ic"><use href="#i-hourglass"/></svg>增量评分</h4><p>处理新增照片，支持实时进度</p></div>
         <button class="btn btn-primary btn-sm" onclick="runLongTask('score_run')">执行</button>
       </div>
       <div class="action-card">
-        <div class="info"><h4>🎯 选片预览</h4><p>仅选片，不推送</p></div>
+        <div class="info"><h4><svg class="ic"><use href="#i-target"/></svg>选片预览</h4><p>仅选片，不推送</p></div>
         <button class="btn btn-ghost btn-sm" onclick="runAction('push_select')">执行</button>
       </div>
       <div class="action-card">
-        <div class="info"><h4>🔄 重试失败</h4><p>重新处理评分失败的照片</p></div>
+        <div class="info"><h4><svg class="ic"><use href="#i-rotate"/></svg>重试失败</h4><p>重新处理评分失败的照片</p></div>
         <button class="btn btn-danger btn-sm" onclick="runLongTask('retry')">执行</button>
       </div>
       <div class="action-card">
-        <div class="info"><h4>📑 建立索引</h4><p>扫描照片目录，生成索引文件</p></div>
+        <div class="info"><h4><svg class="ic"><use href="#i-database"/></svg>建立索引</h4><p>扫描照片目录，生成索引文件</p></div>
         <button class="btn btn-ghost btn-sm" onclick="runLongTask('build_index')">执行</button>
       </div>
 </div>
