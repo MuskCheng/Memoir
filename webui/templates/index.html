@@ -62,7 +62,7 @@ body {
   background: var(--card); border: 1px solid var(--border);
   border-radius: 10px; padding: 16px; transition: border-color 0.2s;
 }
-.card:hover { border-color: var(--accent); }
+.card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(0,0,0,.25); }
 .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .card .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
 .card .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
@@ -96,6 +96,55 @@ body {
 .btn-danger:hover { background: #dc2626; }
 .btn-sm { padding: 4px 10px; font-size: 11px; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:not(:disabled):hover { transform: translateY(-1px); }
+.btn:not(:disabled):active { transform: translateY(0); }
+
+/* 快捷操作（面板顶部） */
+.quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.quick-card {
+  display: flex; align-items: center; gap: 14px;
+  background: linear-gradient(150deg, var(--card) 55%, rgba(15,23,42,.4));
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px 18px;
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.quick-card:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,0,0,.35); }
+.quick-card.is-green:hover { border-color: rgba(34,197,94,.5); }
+.quick-card.is-blue:hover { border-color: rgba(59,130,246,.5); }
+.quick-icon {
+  width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.is-green .quick-icon { background: rgba(34,197,94,.13); box-shadow: inset 0 0 0 1px rgba(34,197,94,.25); }
+.is-blue .quick-icon { background: rgba(59,130,246,.13); box-shadow: inset 0 0 0 1px rgba(59,130,246,.25); }
+.quick-info { flex: 1; min-width: 0; }
+.quick-info h4 { font-size: 14px; font-weight: 600; }
+.quick-info p { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.quick-controls { display: flex; gap: 8px; align-items: center; }
+.device-select {
+  padding: 8px 10px; font-size: 12px; max-width: 150px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); outline: none;
+  transition: border-color .2s;
+}
+.device-select:focus { border-color: var(--accent); }
+
+/* 主推按钮 */
+.btn-hero {
+  padding: 10px 20px; font-size: 13px; font-weight: 600;
+  border-radius: 8px; color: #fff; letter-spacing: .3px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.28);
+}
+.btn-hero-green { background: linear-gradient(135deg, #22c55e, #15803d); }
+.btn-hero-blue { background: linear-gradient(135deg, #3b82f6, #1e40af); }
+.btn-hero:hover { filter: brightness(1.08); box-shadow: 0 5px 18px rgba(0,0,0,.38); }
+.btn-hero:active { filter: brightness(.97); }
+
+/* 深色滚动条 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2c3a52; border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #3b4d6b; }
 
 /* 日志 */
 .log-container {
@@ -209,6 +258,7 @@ body {
   .sidebar { display: none; }
   .main { padding: 16px; }
   .form-row { grid-template-columns: 1fr; }
+  .quick-actions { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -733,6 +783,30 @@ document.addEventListener('DOMContentLoaded', () => {
       <h2>📊 系统面板</h2>
       <p id="dashboard-time">加载中...</p>
     </div>
+
+    <!-- ⚡ 快捷操作 -->
+    <div class="quick-actions">
+      <div class="quick-card is-green">
+        <div class="quick-icon">⚡</div>
+        <div class="quick-info">
+          <h4>一键全流程</h4>
+          <p>建索引 → AI 评分，推荐日常使用</p>
+        </div>
+        <button class="btn btn-hero btn-hero-green" onclick="runLongTask('score_full')">立即执行</button>
+      </div>
+      <div class="quick-card is-blue">
+        <div class="quick-icon">📡</div>
+        <div class="quick-info">
+          <h4>选片并推送</h4>
+          <p>推送到设备 <span id="push-device-label-dash"></span></p>
+        </div>
+        <div class="quick-controls">
+          <select id="push-device-select-dash" class="device-select"></select>
+          <button class="btn btn-hero btn-hero-blue" onclick="runPushWithDevice('push-device-select-dash', this)">立即推送</button>
+        </div>
+      </div>
+    </div>
+
     <div class="grid" id="stats-grid">
       <div class="card"><div class="label">📑 索引照片</div><div class="value" id="stat-index-total">-</div></div>
       <div class="card"><div class="label">照片总数</div><div class="value" id="stat-total">-</div></div>
@@ -957,10 +1031,6 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="action-grid" id="action-grid">
       <div class="action-card">
-        <div class="info"><h4>⚡ 一键全流程</h4><p>建索引 → AI评分（推荐日常使用）</p></div>
-        <button class="btn btn-green btn-sm" onclick="runLongTask('score_full')">执行</button>
-      </div>
-      <div class="action-card">
         <div class="info"><h4>🖼️ AI 评分（全量）</h4><p>处理所有待评分照片，支持实时进度</p></div>
         <button class="btn btn-primary btn-sm" onclick="runLongTask('score_auto')">执行</button>
       </div>
@@ -979,15 +1049,6 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="action-card">
         <div class="info"><h4>🎯 选片预览</h4><p>仅选片，不推送</p></div>
         <button class="btn btn-ghost btn-sm" onclick="runAction('push_select')">执行</button>
-      </div>
-      <div class="action-card">
-        <div class="info"><h4>📡 选片并推送</h4><p>推送到设备 <span id="push-device-label"></span></p></div>
-        <div style="display:flex;gap:6px;align-items:center;">
-          <select id="push-device-select" class="btn btn-ghost" style="padding:4px 8px;font-size:12px;max-width:120px;">
-            <option value="">选择设备...</option>
-          </select>
-          <button class="btn btn-green btn-sm" onclick="runPushWithDevice()">执行</button>
-        </div>
       </div>
       <div class="action-card">
         <div class="info"><h4>🔄 重试失败</h4><p>重新处理评分失败的照片</p></div>
@@ -1483,35 +1544,46 @@ function _fetchGallery() {
 
 // ─── 设备选择器 ──────────────────────────────────────────────
 function loadDevices() {
-  const sel = document.getElementById('push-device-select');
-  const label = document.getElementById('push-device-label');
+  const sels = [
+    document.getElementById('push-device-select-dash'),
+    document.getElementById('push-device-select')
+  ].filter(Boolean);
+  const labels = [
+    document.getElementById('push-device-label-dash'),
+    document.getElementById('push-device-label')
+  ].filter(Boolean);
   fetch('/api/devices')
     .then(r => r.json())
     .then(data => {
-      sel.innerHTML = '<option value="">选择设备...</option>';
       const list = data.configs || [];
       // 先选有 MAC 地址的设备
       let selected = '';
-      list.forEach(d => {
-        const opt = document.createElement('option');
-        opt.value = d.name;
-        opt.textContent = d.name + (d.device_mac ? ' (' + d.device_mac.slice(0, 8) + '...)' : '');
-        sel.appendChild(opt);
-        if (d.device_mac && !selected) selected = d.name;
+      list.forEach(d => { if (d.device_mac && !selected) selected = d.name; });
+      sels.forEach(sel => {
+        sel.innerHTML = '<option value="">选择设备...</option>';
+        list.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.name;
+          opt.textContent = d.name + (d.device_mac ? ' (' + d.device_mac.slice(0, 8) + '...)' : '');
+          sel.appendChild(opt);
+        });
+        if (selected) sel.value = selected;
       });
-      if (selected) sel.value = selected;
-      if (list.length > 0) {
-        label.textContent = '→ ' + (sel.options[sel.selectedIndex]?.text || '');
+      if (list.length > 0 && sels[0]) {
+        const txt = '→ ' + (sels[0].options[sels[0].selectedIndex]?.text || '');
+        labels.forEach(l => l.textContent = txt);
       }
     })
     .catch(() => {});
 }
 
-function runPushWithDevice() {
-  const device = document.getElementById('push-device-select').value;
+function runPushWithDevice(selectId, btn) {
+  selectId = selectId || 'push-device-select-dash';
+  const device = document.getElementById(selectId).value;
   if (!device) { showToast('请先选择推送设备', 'error'); return; }
-  const btn = document.querySelector('#action-grid .btn-green');
-  btn.disabled = true; btn.textContent = '⏳';
+  btn = btn || document.querySelector('#action-grid .btn-green');
+  const origText = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ 推送中...';
   fetch('/api/action/push_push', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -1519,15 +1591,17 @@ function runPushWithDevice() {
   })
   .then(r => r.json())
   .then(res => {
-    btn.disabled = false; btn.textContent = '执行';
+    btn.disabled = false; btn.textContent = origText;
     const resultDiv = document.getElementById('action-result');
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = '<pre style="margin:0;white-space:pre-wrap;word-break:break-all;">' +
-      escapeHtml(JSON.stringify(res, null, 2)) + '</pre>';
+    if (resultDiv) {
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = '<pre style="margin:0;white-space:pre-wrap;word-break:break-all;">' +
+        escapeHtml(JSON.stringify(res, null, 2)) + '</pre>';
+    }
     if (res.success) showToast('✅ 推送成功');
     else showToast('❌ ' + (res.error || '推送失败'), 'error');
   })
-  .catch(e => { btn.disabled = false; btn.textContent = '执行'; showToast('❌ ' + e.message, 'error'); });
+  .catch(e => { btn.disabled = false; btn.textContent = origText; showToast('❌ ' + e.message, 'error'); });
 }
 
 // ─── 断点续评：显示待处理数量 ────────────────────────────────
