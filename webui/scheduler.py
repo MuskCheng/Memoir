@@ -23,7 +23,6 @@ from apscheduler.triggers.date import DateTrigger
 # ─── 路径 ──────────────────────────────────────────────────────
 SCRIPT_DIR = Path(__file__).resolve().parent.parent
 TASKS_FILE = Path(os.environ.get("DATA_DIR", SCRIPT_DIR / "data")) / "scheduled_tasks.json"
-LOG_FILE = Path(os.environ.get("DATA_DIR", SCRIPT_DIR / "data")) / "scheduler.log"
 
 log = logging.getLogger("scheduler")
 
@@ -93,17 +92,42 @@ def save_tasks(tasks):
 
 # ─── 任务执行 ──────────────────────────────────────────────────
 
-def run_action(action_id):
+def run_action(action_id, device=""):
     """执行指定操作，写入日志"""
-    # run_action 被定时器直接调用时不传 device
-    _exec_action(action_id)
+    _exec_action(action_id, device)
+
+def _update_task_last_run(task_id):
+    """更新任务的 last_run 字段"""
+    tasks = load_tasks()
+    for t in tasks:
+        if t.get("id") == task_id:
+            t["last_run"] = datetime.now().isoformat()
+            save_tasks(tasks)
+            log.debug(f"  已更新任务 {task_id} 的 last_run")
+            return
 
 def _exec_action(action_id, device=""):
     """执行操作，支持设备参数"""
     cmd = ACTION_MAP.get(action_id)
+    
+    # 动态构建命令（build_index/export 需从配置读取路径）
+    if cmd is None and action_id == "build_index":
+        try:
+            from config_module import load_config as _load_cfg
+            cfg = _load_cfg(auto_create=False)
+            photo_dir = cfg.get("paths", {}).get("photo_dir", "")
+            index_file = cfg.get("paths", {}).get("index_file", "")
+            cmd = [PYTHON_EXE, "build_index.py", photo_dir, "-o", index_file]
+        except Exception as e:
+            log.error(f"构建 build_index 命令失败: {e}")
+            return False
+    elif cmd is None and action_id == "export":
+        export_file = str(SCRIPT_DIR / "data" / "export.jsonl")
+        cmd = [PYTHON_EXE, "score.py", "export", "-o", export_file]
+    
     if not cmd:
         log.error(f"未知操作: {action_id}")
-        return
+        return False
     
     # push 任务追加设备参数（如果有）
     if action_id == "push_push" and device:
@@ -127,14 +151,18 @@ def _exec_action(action_id, device=""):
             if result.stdout:
                 for line in result.stdout.strip().split("\n")[-3:]:
                     log.info(f"  {line.strip()}")
+            return True
         else:
             log.error(f"❌ [定时任务] {label} 失败 (code={result.returncode})")
             if result.stderr:
                 log.error(f"  {result.stderr.strip()[-200:]}")
+            return False
     except subprocess.TimeoutExpired:
         log.error(f"⏰ [定时任务] {label} 超时")
+        return False
     except Exception as e:
         log.error(f"💥 [定时任务] {label} 异常: {e}")
+        return False
 
 
 # ─── 调度器管理 ────────────────────────────────────────────────
@@ -192,21 +220,26 @@ class TaskScheduler:
         job_id = self._make_job_id(task)
         action = task.get("action", "score_stats")
         name = task.get("name", "未命名任务")
+        device = task.get("device", "")
+        task_id = task.get("id", "")
+        
+        def job_wrapper(action_id=action, dev=device, tid=task_id):
+            """包装执行函数，成功后更新 last_run"""
+            success = _exec_action(action_id, dev)
+            if success:
+                _update_task_last_run(tid)
         
         try:
             trigger = self._get_trigger(task)
-            device = task.get("device", "")
             self.scheduler.add_job(
-                run_action,
+                job_wrapper,
                 trigger=trigger,
-                args=[action],
                 id=job_id,
                 name=name,
                 replace_existing=True,
                 misfire_grace_time=300,
             )
             log.info(f"  📋 已注册: {name} ({action})" + (f" -> {device}" if device else ""))
-            log.info(f"  ✅ 已注册任务: {name} (ID: {task['id']})")
         except Exception as e:
             log.error(f"  ❌ 注册任务失败 {name}: {e}")
     

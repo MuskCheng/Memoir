@@ -417,7 +417,7 @@ def add_watermark(img, shoot_date):
 MAX_IMAGE_SIZE = 50 * 1024 * 1024
 
 def process_image(img_path, output_path, shoot_date, cfg=None):
-    """处理图片：缩放 + 添加水印"""
+    """处理图片：居中裁切适配屏幕比例 + 缩放 + 添加水印"""
     if cfg is None:
         cfg = CFG
     try:
@@ -435,6 +435,24 @@ def process_image(img_path, output_path, shoot_date, cfg=None):
         img_proc = cfg.get("image_processing", {})
         out_w = img_proc.get("output_width", 400)
         out_h = img_proc.get("output_height", 300)
+
+        # 居中裁切：先按目标比例裁切，再缩放到目标尺寸
+        img_w, img_h = img.size
+        target_ratio = out_w / out_h
+        img_ratio = img_w / img_h
+
+        if img_ratio > target_ratio:
+            # 原图更宽，裁切左右两侧
+            new_w = int(img_h * target_ratio)
+            left = (img_w - new_w) // 2
+            img = img.crop((left, 0, left + new_w, img_h))
+        elif img_ratio < target_ratio:
+            # 原图更高（竖图），裁切上下两侧
+            new_h = int(img_w / target_ratio)
+            top = (img_h - new_h) // 2
+            img = img.crop((0, top, img_w, top + new_h))
+
+        # 缩放到目标尺寸
         img = img.resize((out_w, out_h), Image.LANCZOS)
 
         # 添加水印
@@ -443,7 +461,7 @@ def process_image(img_path, output_path, shoot_date, cfg=None):
         # 保存（使用配置的 JPEG 质量）
         jpeg_q = img_proc.get("jpeg_quality", 80)
         img.save(output_path, "JPEG", quality=jpeg_q)
-        
+
         log.info(f"图片处理完成: {output_path}")
         return True
     except Exception as e:

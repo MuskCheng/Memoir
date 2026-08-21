@@ -232,98 +232,407 @@ body {
 </div>
 
 <!-- 初始化引导（首次启动时显示） -->
-<div id="setup-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:999;padding:40px;overflow-y:auto;">
-  <div style="max-width:600px;margin:40px auto;">
-    <h2 style="margin-bottom:8px;">🚀 欢迎使用 Memoir</h2>
-    <p style="color:var(--muted);margin-bottom:24px;">首次启动，请完成以下初始化配置</p>
-    
-    <div id="setup-photo-section" class="card" style="padding:16px;margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <h4 style="margin:0;">📸 照片目录</h4>
-          <p style="color:var(--muted);font-size:12px;margin:4px 0 0;" id="setup-photo-hint">自动检测中...</p>
+<div id="setup-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:var(--bg);z-index:999;overflow-y:auto;">
+  <div style="max-width:700px;margin:40px auto;padding:0 20px;">
+    <!-- 头部 -->
+    <div style="text-align:center;margin-bottom:32px;">
+      <h1 style="font-size:28px;margin-bottom:8px;">🚀 欢迎使用 Memoir</h1>
+      <p style="color:var(--muted);font-size:14px;">ZecTrix Note4 岁月史书推送系统</p>
+      <p style="color:var(--muted);font-size:13px;margin-top:4px;">首次启动，请完成以下初始化配置</p>
+    </div>
+
+    <!-- 步骤指示器 -->
+    <div style="display:flex;justify-content:center;gap:8px;margin-bottom:32px;">
+      <div class="setup-step active" data-step="1">1. 照片目录</div>
+      <div class="setup-step" data-step="2">2. AI 服务</div>
+      <div class="setup-step" data-step="3">3. 推送配置</div>
+      <div class="setup-step" data-step="4">4. 确认启动</div>
+    </div>
+
+    <!-- 步骤 1: 照片目录 -->
+    <div id="setup-step-1" class="setup-content active">
+      <div class="card" style="padding:24px;">
+        <h3 style="margin-bottom:16px;">📸 照片目录配置</h3>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">选择存储照片的目录，系统将扫描此目录建立索引</p>
+
+        <div class="form-group">
+          <label>照片目录路径</label>
+          <div style="display:flex;gap:8px;">
+            <input id="setup-photo-dir" style="flex:1;" placeholder="例如: /photos 或 D:\Photos">
+            <button class="btn btn-ghost btn-sm" onclick="setupAutoDetect()">🔍 自动检测</button>
+          </div>
+          <div id="setup-photo-hint" style="font-size:11px;color:var(--muted);margin-top:6px;">正在检测环境变量...</div>
+        </div>
+
+        <div id="setup-env-photo" class="setup-env-badge" style="display:none;">
+          <span class="env-icon">📋</span>
+          <span>检测到环境变量 PHOTO_DIR: <code id="setup-env-photo-val"></code></span>
+          <button class="btn btn-ghost btn-sm" onclick="useEnvPhotoDir()">使用此值</button>
         </div>
       </div>
-      <div style="margin-top:12px;display:flex;gap:8px;">
-        <input id="setup-photo-dir" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;" placeholder="选择照片目录...">
-        <button class="btn btn-ghost btn-sm" onclick="setupAutoDetect()">自动检测</button>
+    </div>
+
+    <!-- 步骤 2: AI 服务配置 -->
+    <div id="setup-step-2" class="setup-content" style="display:none;">
+      <div class="card" style="padding:24px;">
+        <h3 style="margin-bottom:16px;">🤖 AI 服务配置</h3>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">配置 Ollama 服务用于照片智能评分</p>
+
+        <div class="form-group">
+          <label>Ollama 服务地址</label>
+          <input id="setup-ollama-url" placeholder="http://localhost:11434">
+          <div id="setup-env-ollama" class="setup-env-badge" style="display:none;margin-top:6px;">
+            <span class="env-icon">📋</span>
+            <span>环境变量: <code id="setup-env-ollama-val"></code></span>
+            <button class="btn btn-ghost btn-sm" onclick="useEnvOllamaUrl()">使用</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>AI 模型</label>
+          <div style="display:flex;gap:8px;">
+            <select id="setup-ollama-model" style="flex:1;">
+              <option value="">请先配置 Ollama 地址</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="setupLoadModels()">🔄 刷新</button>
+          </div>
+          <div id="setup-ollama-status" style="font-size:11px;margin-top:6px;"></div>
+        </div>
+
+        <div id="setup-env-model" class="setup-env-badge" style="display:none;">
+          <span class="env-icon">📋</span>
+          <span>环境变量 OLLAMA_MODEL: <code id="setup-env-model-val"></code></span>
+          <button class="btn btn-ghost btn-sm" onclick="useEnvModel()">使用</button>
+        </div>
       </div>
     </div>
-    
-    <div id="setup-index-section" class="card" style="padding:16px;margin-bottom:16px;">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <input type="checkbox" id="setup-build-index" checked style="width:18px;height:18px;">
-        <div>
-          <h4 style="margin:0;">📑 建立照片索引</h4>
-          <p style="color:var(--muted);font-size:12px;margin:4px 0 0;">扫描照片目录，生成索引文件</p>
+
+    <!-- 步骤 3: 推送配置 -->
+    <div id="setup-step-3" class="setup-content" style="display:none;">
+      <div class="card" style="padding:24px;">
+        <h3 style="margin-bottom:16px;">📡 推送设备配置</h3>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">配置 ZecTrix Note4 设备推送参数（可选，稍后配置）</p>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>设备 MAC 地址</label>
+            <input id="setup-device-mac" placeholder="xx:xx:xx:xx:xx:xx">
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <input id="setup-api-key" type="password" placeholder="输入 API Key">
+          </div>
         </div>
-      </label>
-    </div>
-    
-    <div id="setup-tasks-section" class="card" style="padding:16px;margin-bottom:24px;">
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <input type="checkbox" id="setup-create-tasks" checked style="width:18px;height:18px;">
-        <div>
-          <h4 style="margin:0;">⏰ 创建定时任务</h4>
-          <p style="color:var(--muted);font-size:12px;margin:4px 0 0;">
-            每天凌晨3点自动评分 | 每天早8点自动推送
-          </p>
+
+        <div id="setup-env-push" class="setup-env-badge" style="display:none;">
+          <span class="env-icon">📋</span>
+          <span>检测到环境变量: API_KEY, DEVICE_MAC</span>
+          <button class="btn btn-ghost btn-sm" onclick="useEnvPushConfig()">使用</button>
         </div>
-      </label>
+
+        <div style="margin-top:12px;padding:12px;background:rgba(59,130,246,0.1);border-radius:8px;font-size:12px;color:var(--accent);">
+          💡 推送配置可以稍后在「配置」页面中修改
+        </div>
+      </div>
     </div>
-    
-    <div id="setup-errors" style="color:var(--red);margin-bottom:12px;display:none;"></div>
-    <div id="setup-progress" style="display:none;margin-bottom:12px;">
-      <div style="color:var(--muted);font-size:13px;" id="setup-progress-text">处理中...</div>
+
+    <!-- 步骤 4: 确认启动 -->
+    <div id="setup-step-4" class="setup-content" style="display:none;">
+      <div class="card" style="padding:24px;">
+        <h3 style="margin-bottom:16px;">✅ 确认配置</h3>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">请确认以下配置信息</p>
+
+        <div id="setup-summary" style="background:var(--bg);border-radius:8px;padding:16px;font-size:13px;">
+          <!-- 动态填充 -->
+        </div>
+
+        <div style="margin-top:20px;">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
+            <input type="checkbox" id="setup-build-index" checked style="width:18px;height:18px;">
+            <div>
+              <div style="font-weight:500;">📑 建立照片索引</div>
+              <div style="color:var(--muted);font-size:11px;">扫描照片目录，生成索引文件</div>
+            </div>
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+            <input type="checkbox" id="setup-create-tasks" checked style="width:18px;height:18px;">
+            <div>
+              <div style="font-weight:500;">⏰ 创建定时任务</div>
+              <div style="color:var(--muted);font-size:11px;">每天凌晨3点自动评分 | 每天早8点自动推送</div>
+            </div>
+          </label>
+        </div>
+      </div>
     </div>
-    
-    <button id="setup-btn" class="btn btn-green" style="width:100%;padding:12px;font-size:15px;" onclick="setupApply()">
-      ✅ 一键初始化
-    </button>
+
+    <!-- 错误提示 -->
+    <div id="setup-errors" style="color:var(--red);margin:16px 0;display:none;"></div>
+
+    <!-- 按钮栏 -->
+    <div style="display:flex;gap:12px;margin-top:24px;">
+      <button id="setup-prev-btn" class="btn btn-ghost" style="flex:1;padding:12px;" onclick="setupPrev()" disabled>上一步</button>
+      <button id="setup-next-btn" class="btn btn-primary" style="flex:2;padding:12px;" onclick="setupNext()">下一步</button>
+    </div>
   </div>
 </div>
 
+<style>
+.setup-step {
+  padding:8px 16px;
+  border-radius:20px;
+  font-size:12px;
+  color:var(--muted);
+  background:var(--card);
+  border:1px solid var(--border);
+}
+.setup-step.active {
+  color:var(--accent);
+  border-color:var(--accent);
+  background:rgba(59,130,246,0.1);
+}
+.setup-step.done {
+  color:var(--green);
+  border-color:var(--green);
+  background:rgba(34,197,94,0.1);
+}
+.setup-env-badge {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:10px 12px;
+  background:rgba(59,130,246,0.08);
+  border:1px solid rgba(59,130,246,0.2);
+  border-radius:8px;
+  font-size:12px;
+  margin-top:12px;
+}
+.setup-env-badge code {
+  background:var(--bg);
+  padding:2px 6px;
+  border-radius:4px;
+  font-family:monospace;
+}
+.env-icon { font-size:16px; }
+</style>
+
 <script>
-// 初始化引导逻辑
-function checkSetupNeeded() {
-  fetch('/api/setup/status')
-    .then(r => r.json())
-    .then(data => {
-      if (data.need_setup) {
-        document.getElementById('setup-overlay').style.display = 'block';
-        document.getElementById('setup-photo-dir').value = data.photo_dir || '';
-        document.getElementById('setup-photo-hint').textContent = 
-          '需要配置: ' + data.reasons.join(', ');
-      }
-    })
-    .catch(() => {});
+// 初始化引导状态
+let setupState = {
+  step: 1,
+  envConfig: {},
+  ollamaRunning: false,
+  ollamaModels: [],
+};
+
+// 步骤导航
+function setupUpdateUI() {
+  const step = setupState.step;
+
+  // 更新步骤指示器
+  document.querySelectorAll('.setup-step').forEach((el, i) => {
+    el.classList.remove('active', 'done');
+    if (i + 1 === step) el.classList.add('active');
+    else if (i + 1 < step) el.classList.add('done');
+  });
+
+  // 显示当前步骤内容
+  document.querySelectorAll('.setup-content').forEach((el, i) => {
+    el.style.display = (i + 1 === step) ? 'block' : 'none';
+  });
+
+  // 按钮状态
+  document.getElementById('setup-prev-btn').disabled = (step === 1);
+  const nextBtn = document.getElementById('setup-next-btn');
+  if (step === 4) {
+    nextBtn.textContent = '✅ 一键初始化';
+    nextBtn.className = 'btn btn-green';
+    nextBtn.style.flex = '2';
+  } else {
+    nextBtn.textContent = '下一步';
+    nextBtn.className = 'btn btn-primary';
+    nextBtn.style.flex = '2';
+  }
+
+  // 步骤 4 时更新摘要
+  if (step === 4) {
+    updateSetupSummary();
+  }
 }
 
+function setupNext() {
+  const step = setupState.step;
+
+  // 验证当前步骤
+  if (step === 1) {
+    const photoDir = document.getElementById('setup-photo-dir').value.trim();
+    if (!photoDir) {
+      showToast('请输入照片目录路径', 'error');
+      return;
+    }
+  }
+
+  if (step < 4) {
+    setupState.step = step + 1;
+    setupUpdateUI();
+
+    // 进入步骤 2 时加载模型列表
+    if (setupState.step === 2) {
+      setupLoadModels();
+    }
+  } else {
+    // 步骤 4: 执行初始化
+    setupApply();
+  }
+}
+
+function setupPrev() {
+  if (setupState.step > 1) {
+    setupState.step--;
+    setupUpdateUI();
+  }
+}
+
+// 环境变量使用
+function useEnvPhotoDir() {
+  document.getElementById('setup-photo-dir').value = setupState.envConfig.photo_dir || '';
+  document.getElementById('setup-photo-hint').textContent = '✅ 已使用环境变量值';
+  document.getElementById('setup-photo-hint').style.color = 'var(--green)';
+}
+
+function useEnvOllamaUrl() {
+  document.getElementById('setup-ollama-url').value = setupState.envConfig.ollama_url || '';
+}
+
+function useEnvModel() {
+  const model = setupState.envConfig.ollama_model;
+  const sel = document.getElementById('setup-ollama-model');
+  const opt = Array.from(sel.options).find(o => o.value === model);
+  if (opt) opt.selected = true;
+}
+
+function useEnvPushConfig() {
+  document.getElementById('setup-device-mac').value = setupState.envConfig.device_mac || '';
+  document.getElementById('setup-api-key').value = setupState.envConfig.api_key || '';
+}
+
+// 自动检测照片目录
 function setupAutoDetect() {
-  document.getElementById('setup-photo-hint').textContent = '检测中...';
+  const hint = document.getElementById('setup-photo-hint');
+  hint.textContent = '🔍 检测中...';
+  hint.style.color = 'var(--muted)';
+
   fetch('/api/setup/status')
     .then(r => r.json())
     .then(data => {
-      if (data.photo_dir) {
-        document.getElementById('setup-photo-dir').value = data.photo_dir;
-        document.getElementById('setup-photo-hint').textContent = '已检测到: ' + data.photo_dir;
+      if (data.detected_photo_dir) {
+        document.getElementById('setup-photo-dir').value = data.detected_photo_dir;
+        hint.textContent = '✅ 已检测到: ' + data.detected_photo_dir;
+        hint.style.color = 'var(--green)';
       } else {
-        document.getElementById('setup-photo-hint').textContent = '未检测到照片目录，请手动输入';
+        hint.textContent = '⚠️ 未检测到照片目录，请手动输入';
+        hint.style.color = 'var(--yellow)';
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      hint.textContent = '❌ 检测失败，请手动输入';
+      hint.style.color = 'var(--red)';
+    });
 }
 
+// 加载 Ollama 模型列表
+function setupLoadModels() {
+  const url = document.getElementById('setup-ollama-url').value.trim();
+  const sel = document.getElementById('setup-ollama-model');
+  const status = document.getElementById('setup-ollama-status');
+
+  if (!url) {
+    sel.innerHTML = '<option value="">请先输入 Ollama 地址</option>';
+    return;
+  }
+
+  sel.innerHTML = '<option value="">加载中...</option>';
+  sel.disabled = true;
+  status.textContent = '🔄 连接中...';
+  status.style.color = 'var(--muted)';
+
+  // 使用配置的地址或默认地址
+  fetch('/api/models')
+    .then(r => r.json())
+    .then(data => {
+      setupState.ollamaModels = data.models || [];
+      if (data.models.length === 0) {
+        sel.innerHTML = '<option value="">无可用模型</option>';
+        status.textContent = '⚠️ 未发现模型，请先拉取: ollama pull qwen2.5vl:7b';
+        status.style.color = 'var(--yellow)';
+      } else {
+        sel.innerHTML = data.models.map(m =>
+          `<option value="${m}" ${m === data.current ? 'selected' : ''}>${m}</option>`
+        ).join('');
+        status.textContent = '✅ 已连接，发现 ' + data.models.length + ' 个模型';
+        status.style.color = 'var(--green)';
+
+        // 如果有环境变量指定的模型，优先选中
+        const envModel = setupState.envConfig.ollama_model;
+        if (envModel) {
+          const opt = Array.from(sel.options).find(o => o.value === envModel);
+          if (opt) opt.selected = true;
+        }
+      }
+      sel.disabled = false;
+    })
+    .catch(() => {
+      sel.innerHTML = '<option value="">连接失败</option>';
+      sel.disabled = false;
+      status.textContent = '❌ 无法连接 Ollama 服务';
+      status.style.color = 'var(--red)';
+    });
+}
+
+// 更新配置摘要
+function updateSetupSummary() {
+  const photoDir = document.getElementById('setup-photo-dir').value || '未配置';
+  const ollamaUrl = document.getElementById('setup-ollama-url').value || '未配置';
+  const ollamaModel = document.getElementById('setup-ollama-model').value || '未选择';
+  const deviceMac = document.getElementById('setup-device-mac').value || '未配置';
+  const buildIndex = document.getElementById('setup-build-index').checked;
+  const createTasks = document.getElementById('setup-create-tasks').checked;
+
+  document.getElementById('setup-summary').innerHTML = `
+    <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;">
+      <div style="color:var(--muted);">📸 照片目录:</div>
+      <div>${escapeHtml(photoDir)}</div>
+      <div style="color:var(--muted);">🤖 Ollama:</div>
+      <div>${escapeHtml(ollamaUrl)}</div>
+      <div style="color:var(--muted);">🧠 AI 模型:</div>
+      <div>${escapeHtml(ollamaModel)}</div>
+      <div style="color:var(--muted);">📡 设备 MAC:</div>
+      <div>${deviceMac ? escapeHtml(deviceMac.slice(0, 14)) + '...' : '未配置'}</div>
+    </div>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+      <div>${buildIndex ? '✅' : '⬜'} 建立照片索引</div>
+      <div style="margin-top:4px;">${createTasks ? '✅' : '⬜'} 创建定时任务（每日评分 + 推送）</div>
+    </div>
+  `;
+}
+
+// 执行初始化
 function setupApply() {
-  const btn = document.getElementById('setup-btn');
-  btn.disabled = true; btn.textContent = '⏳ 处理中...';
-  
+  const btn = document.getElementById('setup-next-btn');
+  const prevBtn = document.getElementById('setup-prev-btn');
+  btn.disabled = true;
+  prevBtn.disabled = true;
+  btn.textContent = '⏳ 初始化中...';
+
   const data = {
     photo_dir: document.getElementById('setup-photo-dir').value,
+    ollama_url: document.getElementById('setup-ollama-url').value,
+    ollama_model: document.getElementById('setup-ollama-model').value,
+    device_mac: document.getElementById('setup-device-mac').value,
+    api_key: document.getElementById('setup-api-key').value,
     build_index: document.getElementById('setup-build-index').checked,
     create_tasks: document.getElementById('setup-create-tasks').checked,
   };
-  
+
   fetch('/api/setup/apply', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -333,21 +642,81 @@ function setupApply() {
     .then(resp => {
       if (resp.success) {
         btn.textContent = '✅ 初始化完成！';
+        btn.style.background = 'var(--green)';
+        showToast('🎉 初始化成功！即将刷新页面...');
         setTimeout(() => {
           document.getElementById('setup-overlay').style.display = 'none';
           location.reload();
-        }, 1500);
+        }, 2000);
       } else {
-        btn.disabled = false; btn.textContent = '✅ 一键初始化';
+        btn.disabled = false;
+        prevBtn.disabled = false;
+        btn.textContent = '✅ 一键初始化';
         document.getElementById('setup-errors').style.display = 'block';
         document.getElementById('setup-errors').textContent = '❌ ' + (resp.error || '初始化失败');
       }
     })
     .catch(e => {
-      btn.disabled = false; btn.textContent = '✅ 一键初始化';
+      btn.disabled = false;
+      prevBtn.disabled = false;
+      btn.textContent = '✅ 一键初始化';
       document.getElementById('setup-errors').style.display = 'block';
       document.getElementById('setup-errors').textContent = '❌ ' + e.message;
     });
+}
+
+// 检查是否需要初始化
+function checkSetupNeeded() {
+  fetch('/api/setup/status')
+    .then(r => r.json())
+    .then(data => {
+      if (data.need_setup) {
+        document.getElementById('setup-overlay').style.display = 'block';
+
+        // 保存环境变量配置
+        setupState.envConfig = data.env_config || {};
+        setupState.ollamaRunning = data.ollama_running || false;
+
+        // 填充环境变量提示
+        const env = data.env_config || {};
+
+        // 照片目录
+        if (env.photo_dir) {
+          document.getElementById('setup-env-photo').style.display = 'flex';
+          document.getElementById('setup-env-photo-val').textContent = env.photo_dir;
+          document.getElementById('setup-photo-dir').value = env.photo_dir;
+          document.getElementById('setup-photo-hint').textContent = '✅ 已从环境变量读取';
+          document.getElementById('setup-photo-hint').style.color = 'var(--green)';
+        } else if (data.detected_photo_dir) {
+          document.getElementById('setup-photo-dir').value = data.detected_photo_dir;
+          document.getElementById('setup-photo-hint').textContent = '✅ 已自动检测: ' + data.detected_photo_dir;
+          document.getElementById('setup-photo-hint').style.color = 'var(--green)';
+        } else {
+          document.getElementById('setup-photo-hint').textContent = '请输入照片目录路径';
+        }
+
+        // Ollama
+        if (env.ollama_url) {
+          document.getElementById('setup-env-ollama').style.display = 'flex';
+          document.getElementById('setup-env-ollama-val').textContent = env.ollama_url;
+          document.getElementById('setup-ollama-url').value = env.ollama_url;
+        }
+        if (env.ollama_model) {
+          document.getElementById('setup-env-model').style.display = 'flex';
+          document.getElementById('setup-env-model-val').textContent = env.ollama_model;
+        }
+
+        // 推送配置
+        if (env.api_key || env.device_mac) {
+          document.getElementById('setup-env-push').style.display = 'flex';
+          if (env.device_mac) document.getElementById('setup-device-mac').value = env.device_mac;
+          if (env.api_key) document.getElementById('setup-api-key').value = env.api_key;
+        }
+
+        setupUpdateUI();
+      }
+    })
+    .catch(() => {});
 }
 
 document.addEventListener('DOMContentLoaded', () => {

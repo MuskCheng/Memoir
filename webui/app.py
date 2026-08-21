@@ -43,6 +43,38 @@ DB_PATH = Path(os.environ.get("DATA_DIR", SCRIPT_DIR / "data")) / "zectrix_score
 
 app = Flask(__name__)
 
+# ─── 日志配置 ──────────────────────────────────────────────────
+import logging
+from logging.handlers import RotatingFileHandler
+
+# 配置根日志：写入 photopush.log，过滤 werkzeug HTTP 访问日志
+_log_file = SCRIPT_DIR / "photopush.log"
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.INFO)
+
+# 文件日志（不重复添加）
+if not any(isinstance(h, RotatingFileHandler) for h in _root_logger.handlers):
+    _file_handler = RotatingFileHandler(_log_file, maxBytes=5*1024*1024, backupCount=1, encoding="utf-8")
+    _file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    _file_handler.setLevel(logging.INFO)
+    _root_logger.addHandler(_file_handler)
+
+# 控制台日志
+if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+           for h in _root_logger.handlers):
+    _console_handler = logging.StreamHandler(sys.stdout)
+    _console_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+    _console_handler.setLevel(logging.INFO)
+    _root_logger.addHandler(_console_handler)
+
+# 禁止 Werkzeug 输出 HTTP 访问日志（INFO 级别的请求日志）
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
+# 添加过滤器，彻底拦截 werkzeug 的 INFO 级别日志
+class _WerkzeugFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno >= logging.WARNING
+logging.getLogger("werkzeug").addFilter(_WerkzeugFilter())
+
 # ─── 定时任务调度器（模块级别初始化，确保 API 路由可访问） ────
 scheduler = TaskScheduler()
 
@@ -662,6 +694,7 @@ def api_create_task():
             "cron": data.get("cron", "0 6 * * *"),
             "interval_seconds": int(data.get("interval_seconds", 86400)),
             "run_at": data.get("run_at", ""),
+            "device": data.get("device", ""),
             "enabled": data.get("enabled", True),
             "created_at": datetime.now().isoformat(),
             "last_run": None,
@@ -690,7 +723,7 @@ def api_update_task(task_id):
             if t["id"] == task_id:
                 # 更新字段
                 for key in ["name", "description", "action", "schedule_type",
-                           "cron", "interval_seconds", "run_at", "enabled"]:
+                           "cron", "interval_seconds", "run_at", "device", "enabled"]:
                     if key in data:
                         t[key] = data[key]
                 found = True
@@ -880,7 +913,7 @@ def _is_docker_default_path(path):
 
 @app.route("/api/setup/status")
 def api_setup_status():
-    """检查系统是否需要初始化引导"""
+    """检查系统是否需要初始化引导，返回环境变量和当前配置状态"""
     cfg = load_config()
     paths = cfg.get("paths", {})
     photo_dir = paths.get("photo_dir", "")
@@ -904,27 +937,54 @@ def api_setup_status():
     # 索引文件不存在不算初始化未完成，用户可以在主界面手动建立索引
     index_ok = index_file and Path(index_file).exists() and Path(index_file).stat().st_size > 0
 
+    # 检测环境变量
+    env_config = {
+        "photo_dir": os.environ.get("PHOTO_DIR", ""),
+        "ollama_url": os.environ.get("OLLAMA_BASE_URL", ""),
+        "ollama_model": os.environ.get("OLLAMA_MODEL", ""),
+        "api_key": os.environ.get("API_KEY", ""),
+        "device_mac": os.environ.get("DEVICE_MAC", ""),
+        "data_dir": os.environ.get("DATA_DIR", ""),
+    }
+
+    # 检测可用的照片目录
+    detected_photo_dir = ""
+    if env_config["photo_dir"]:
+        detected_photo_dir = env_config["photo_dir"]
+    else:
+        # 自动检测常见照片目录
+        from webui.health import check_photo_dir
+        pd_result = check_photo_dir(cfg)
+        if pd_result["exists"]:
+            detected_photo_dir = pd_result["path"]
+
+    # 检测 Ollama 状态
+    ollama_status = check_ollama()
+
     return jsonify({
         "need_setup": need_setup,
         "reasons": reasons,
         "photo_dir": photo_dir,
+        "detected_photo_dir": detected_photo_dir,
         "index_ok": index_ok,
         "tasks_count": len(tasks),
+        "env_config": env_config,
+        "ollama_running": ollama_status.get("running", False),
+        "ollama_models": ollama_status.get("models", []),
     })
 
 @app.route("/api/setup/apply", methods=["POST"])
 def api_setup_apply():
-    """执行初始化：自动检测目录、建立索引、创建默认定时任务"""
-    results = {"photo_dir": "", "index": False, "tasks": [], "errors": []}
+    """执行初始化：保存配置、建立索引、创建默认定时任务"""
+    results = {"photo_dir": "", "ollama": False, "push": False, "index": False, "tasks": [], "errors": []}
 
     try:
-        # 1. 自动检测照片目录
-        from webui.health import check_photo_dir
         data = request.get_json() or {}
         photo_dir = data.get("photo_dir", "")
 
+        # 自动检测照片目录
         if not photo_dir:
-            # 自动检测
+            from webui.health import check_photo_dir
             pd_result = check_photo_dir(load_config())
             if pd_result["exists"]:
                 photo_dir = pd_result["path"]
@@ -936,29 +996,82 @@ def api_setup_apply():
             photo_dir = "/photos"
             print(f"  🐳 Docker 环境: 使用容器内挂载路径 /photos")
 
-        # 写入配置
+        # 加载当前配置
         cfg = load_config()
+
+        # 1. 保存照片目录配置
         cfg.setdefault("paths", {})["photo_dir"] = photo_dir
         cfg["paths"]["project_dir"] = str(SCRIPT_DIR / "data")
         cfg["paths"]["index_file"] = str(SCRIPT_DIR / "data" / "zectrix_photo_index.txt")
         cfg["paths"]["score_db"] = str(SCRIPT_DIR / "data" / "zectrix_scores.sqlite")
-        _save_config(cfg)
         results["photo_dir"] = photo_dir
-        print(f"  ✅ 配置已保存: photo_dir={photo_dir}")
-        
-        # 2. 建立索引（如果勾选）
+        print(f"  ✅ 照片目录: {photo_dir}")
+
+        # 2. 保存 Ollama 配置
+        ollama_url = data.get("ollama_url", "")
+        ollama_model = data.get("ollama_model", "")
+        if ollama_url:
+            cfg.setdefault("ollama", {})["base_url"] = ollama_url
+            print(f"  ✅ Ollama 地址: {ollama_url}")
+        if ollama_model:
+            cfg.setdefault("ollama", {})["model"] = ollama_model
+            print(f"  ✅ AI 模型: {ollama_model}")
+        results["ollama"] = bool(ollama_url or ollama_model)
+
+        # 3. 保存推送配置
+        device_mac = data.get("device_mac", "")
+        api_key = data.get("api_key", "")
+        if device_mac or api_key:
+            cfg.setdefault("push_settings", {})
+            if device_mac:
+                cfg["push_settings"]["device_mac"] = device_mac
+            if api_key:
+                cfg["push_settings"]["api_key"] = api_key
+
+            # 同步到 devices[0]
+            devices = cfg.get("devices", [])
+            if devices:
+                if device_mac:
+                    devices[0]["device_mac"] = device_mac
+                if api_key:
+                    devices[0]["api_key"] = api_key
+            else:
+                cfg["devices"] = [{
+                    "name": "默认设备",
+                    "device_mac": device_mac,
+                    "api_key": api_key,
+                    "dither": True,
+                    "page_id": 1,
+                    "api_base": "https://cloud.zectrix.com/open/v1/devices"
+                }]
+            results["push"] = True
+            print(f"  ✅ 推送配置已保存")
+
+        # 应用环境变量覆盖
+        from config_module import _apply_env_overrides
+        _apply_env_overrides(cfg)
+
+        # 保存配置
+        _save_config(cfg)
+
+        # 4. 建立索引（如果勾选）
         if data.get("build_index", True):
             from webui.health import ensure_index
             index_ok = ensure_index(cfg)
             results["index"] = index_ok
-        
-        # 3. 创建默认定时任务
+
+        # 5. 创建默认定时任务
         if data.get("create_tasks", True):
             import uuid
             from webui.scheduler import load_tasks, save_tasks
             tasks = load_tasks()
-            default_tasks = [
-                {
+
+            # 检查是否已存在同名任务
+            existing_names = {t.get("name") for t in tasks}
+            default_tasks = []
+
+            if "每日增量评分" not in existing_names:
+                default_tasks.append({
                     "id": f"task_{uuid.uuid4().hex[:8]}",
                     "name": "每日增量评分",
                     "action": "score_full",
@@ -966,8 +1079,12 @@ def api_setup_apply():
                     "cron": "0 3 * * *",
                     "enabled": True,
                     "description": "每天凌晨3点：增量建索引 + AI评分",
-                },
-                {
+                    "created_at": datetime.now().isoformat(),
+                    "last_run": None,
+                })
+
+            if "每日推送" not in existing_names:
+                default_tasks.append({
                     "id": f"task_{uuid.uuid4().hex[:8]}",
                     "name": "每日推送",
                     "action": "push_push",
@@ -975,16 +1092,20 @@ def api_setup_apply():
                     "cron": "0 8 * * *",
                     "enabled": True,
                     "description": "每天早上8点：选片推送至 Note4",
-                },
-            ]
-            tasks.extend(default_tasks)
-            save_tasks(tasks)
-            if scheduler.running:
-                scheduler.reload_all()
-            results["tasks"] = [t["name"] for t in default_tasks]
-        
+                    "created_at": datetime.now().isoformat(),
+                    "last_run": None,
+                })
+
+            if default_tasks:
+                tasks.extend(default_tasks)
+                save_tasks(tasks)
+                if scheduler.running:
+                    scheduler.reload_all()
+                results["tasks"] = [t["name"] for t in default_tasks]
+                print(f"  ✅ 已创建 {len(default_tasks)} 个定时任务")
+
         return jsonify({"success": True, "results": results})
-    
+
     except Exception as e:
         print(f"❌ 初始化失败: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -1010,6 +1131,38 @@ if __name__ == "__main__":
         _save_config(_cfg)
     except Exception:
         pass
+
+    # 自动创建默认定时任务（如果不存在）
+    if not TASKS_FILE.exists():
+        print("  📋 首次启动，自动创建默认定时任务...")
+        import uuid
+        from webui.scheduler import save_tasks
+        default_tasks = [
+            {
+                "id": f"task_{uuid.uuid4().hex[:8]}",
+                "name": "每日增量评分",
+                "action": "score_full",
+                "schedule_type": "cron",
+                "cron": "0 3 * * *",
+                "enabled": True,
+                "description": "每天凌晨3点：增量建索引 + AI评分",
+                "created_at": datetime.now().isoformat(),
+                "last_run": None,
+            },
+            {
+                "id": f"task_{uuid.uuid4().hex[:8]}",
+                "name": "每日推送",
+                "action": "push_push",
+                "schedule_type": "cron",
+                "cron": "0 8 * * *",
+                "enabled": True,
+                "description": "每天早上8点：选片推送至 Note4",
+                "created_at": datetime.now().isoformat(),
+                "last_run": None,
+            },
+        ]
+        save_tasks(default_tasks)
+        print(f"   已创建 {len(default_tasks)} 个定时任务")
 
     # 启动调度器（BackgroundScheduler 需在 __main__ 中启动）
     scheduler.start()
