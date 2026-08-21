@@ -199,9 +199,9 @@ class ScoreDB:
     def update_vlm_result(self, file_hash, vlm_result):
         """更新 VLM 评分结果"""
         self.conn.execute(
-            """UPDATE photo_scores SET 
-                vlm_done = 1, vlm_score = ?, vlm_desc = ?, vlm_tags = ?, 
-                vlm_scene = ?, vlm_highlights = ?, vlm_issues = ?, 
+            """UPDATE photo_scores SET
+                vlm_done = 1, vlm_score = ?, vlm_desc = ?, vlm_tags = ?,
+                vlm_scene = ?, vlm_highlights = ?, vlm_issues = ?,
                 vlm_raw = ?, scored_at = ?
                WHERE file_hash = ?""",
             (
@@ -216,6 +216,9 @@ class ScoreDB:
                 file_hash
             )
         )
+        # 立即提交：单张评分耗时数十秒，逐条提交开销可忽略，
+        # 且能让 WebUI 的已评分页与统计实时可见
+        self.conn.commit()
     
     def mark_vlm_error(self, file_hash, error_msg):
         """标记 VLM 处理失败"""
