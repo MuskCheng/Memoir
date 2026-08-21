@@ -226,13 +226,15 @@ def load_config(config_file=None, auto_create=True):
         print(f"已删除目录: {cfg_file}（将重新创建为配置文件）", file=sys.stderr)
 
     if not cfg_file.exists():
+        cfg = copy.deepcopy(DEFAULT_CONFIG)
+        _apply_migrations(cfg)
+        _apply_env_overrides(cfg)
+        _fix_docker_paths(cfg)
         if auto_create:
-            cfg = copy.deepcopy(DEFAULT_CONFIG)
             save_config(cfg, cfg_file)
             print(f"已自动生成配置文件: {cfg_file}", file=sys.stderr)
-        else:
-            cfg = copy.deepcopy(DEFAULT_CONFIG)
-        _apply_env_overrides(cfg)
+        # num_thread 以 0（自动）写入文件，线程检测仅在内存中生效，
+        # 保证后续 CPU_THREADS 环境变量与硬件变化仍能生效
         _auto_detect(cfg)
         return cfg
 
@@ -242,10 +244,12 @@ def load_config(config_file=None, auto_create=True):
     except json.JSONDecodeError as e:
         raise ValueError(f"配置文件 {cfg_file} 格式错误，无法解析 JSON: {e}")
 
-    # ── 环境变量覆盖 ──────────────────────────────────────
+    # ── 迁移 / 环境变量覆盖 / 路径修正 / 自动检测 ──────────
+    # 注意顺序：env 覆盖必须在 _auto_detect 之前，否则 num_thread
+    # 被自动检测填充后 CPU_THREADS 将永远无法生效
+    _apply_migrations(cfg)
     _apply_env_overrides(cfg)
-
-    # ── 自动检测 ──────────────────────────────────────────
+    _fix_docker_paths(cfg)
     _auto_detect(cfg)
 
     # ── 强制使用 VERSION 文件的版本 ─────────────────────
@@ -254,25 +258,44 @@ def load_config(config_file=None, auto_create=True):
     return cfg
 
 
+def _can_env_override(cfg, section, key):
+    """判断配置项是否允许被环境变量覆盖
+
+    值为空或仍等于 DEFAULT_CONFIG 默认值时视为"用户未修改"，
+    允许环境变量覆盖；用户在 Web UI 中手动修改过的值优先级最高。
+    """
+    default_val = DEFAULT_CONFIG.get(section, {}).get(key)
+    cur = cfg.get(section, {}).get(key)
+    return cur is None or cur == "" or cur == default_val
+
+
 def _apply_env_overrides(cfg):
-    """应用环境变量覆盖（Docker 部署友好）"""
+    """应用环境变量覆盖（Docker 部署友好）
+
+    优先级：Web UI 中用户手动修改的值 > 环境变量 > 默认值。
+    配置值等于默认值时视为未修改，可被环境变量覆盖。
+
+    注意：首次生成的配置文件会将环境变量值固化保存，此后再修改
+    环境变量不会覆盖已固化的值（可在 Web UI 中修改，或删除
+    config.json 重新生成）。
+    """
     env = os.environ
 
     # Ollama
-    if env.get("OLLAMA_BASE_URL"):
+    if env.get("OLLAMA_BASE_URL") and _can_env_override(cfg, "ollama", "base_url"):
         cfg.setdefault("ollama", {})["base_url"] = env["OLLAMA_BASE_URL"]
-    if env.get("OLLAMA_API_ENDPOINT"):
+    if env.get("OLLAMA_API_ENDPOINT") and _can_env_override(cfg, "ollama", "api_endpoint"):
         cfg.setdefault("ollama", {})["api_endpoint"] = env["OLLAMA_API_ENDPOINT"]
-    if env.get("OLLAMA_MODEL"):
+    if env.get("OLLAMA_MODEL") and _can_env_override(cfg, "ollama", "model"):
         cfg.setdefault("ollama", {})["model"] = env["OLLAMA_MODEL"]
-    if env.get("OLLAMA_TIMEOUT"):
+    if env.get("OLLAMA_TIMEOUT") and _can_env_override(cfg, "ollama", "timeout"):
         cfg.setdefault("ollama", {})["timeout"] = int(env["OLLAMA_TIMEOUT"])
-    if env.get("CPU_THREADS"):
+    if env.get("CPU_THREADS") and _can_env_override(cfg, "ollama", "num_thread"):
         cfg.setdefault("ollama", {})["num_thread"] = int(env["CPU_THREADS"])
 
     # 路径
     data_dir = env.get("DATA_DIR")
-    if data_dir:
+    if data_dir and _can_env_override(cfg, "paths", "project_dir"):
         cfg.setdefault("paths", {})["project_dir"] = data_dir
         cfg.setdefault("paths", {}).update({
             "index_file": f"{data_dir}/zectrix_photo_index.txt",
@@ -280,28 +303,39 @@ def _apply_env_overrides(cfg):
             "shown_file": f"{data_dir}/zectrix_shown.txt",
             "output_file": f"{data_dir}/zectrix_today.jpg",
         })
-    if env.get("PHOTO_DIR"):
+    if env.get("PHOTO_DIR") and _can_env_override(cfg, "paths", "photo_dir"):
         cfg.setdefault("paths", {})["photo_dir"] = env["PHOTO_DIR"]
 
     # 推送（同时更新 devices 和 push_settings，确保兼容）
-    if env.get("API_KEY"):
+    if env.get("API_KEY") and _can_env_override(cfg, "push_settings", "api_key"):
         cfg.setdefault("push_settings", {})["api_key"] = env["API_KEY"]
         devices = cfg.get("devices", [])
         if devices:
             devices[0]["api_key"] = env["API_KEY"]
-    if env.get("DEVICE_MAC"):
+    if env.get("DEVICE_MAC") and _can_env_override(cfg, "push_settings", "device_mac"):
         cfg.setdefault("push_settings", {})["device_mac"] = env["DEVICE_MAC"]
         devices = cfg.get("devices", [])
         if devices:
             devices[0]["device_mac"] = env["DEVICE_MAC"]
 
-    # 迁移：旧 API 地址自动更新
+    # 日志
+    if env.get("LOG_LEVEL") and _can_env_override(cfg, "logging", "level"):
+        cfg.setdefault("logging", {})["level"] = env["LOG_LEVEL"]
+
+    # 规则过滤（布尔值无"空"状态：等于默认值即视为未修改）
+    if env.get("FILTER_ENABLED") and _can_env_override(cfg, "filter_rules", "enabled"):
+        val = env["FILTER_ENABLED"].lower()
+        cfg.setdefault("filter_rules", {})["enabled"] = val in ("true", "1", "yes")
+
+
+def _apply_migrations(cfg):
+    """旧版本配置自动迁移（幂等，每次加载配置时执行）"""
     # Ollama 原生端点应为 /api/generate，旧版误设为 /v1/chat/completions 时自动修正
     ollama_ep = cfg.get("ollama", {}).get("api_endpoint", "")
-    if ollama_ep == "/v1/chat/completions" and not env.get("OLLAMA_API_ENDPOINT"):
+    if ollama_ep == "/v1/chat/completions" and not os.environ.get("OLLAMA_API_ENDPOINT"):
         cfg.setdefault("ollama", {})["api_endpoint"] = "/api/generate"
 
-    # 迁移：旧 API 地址自动更新
+    # 极趣云 API 地址迁移：api.zectrix.com → cloud.zectrix.com
     _OLD_API = "api.zectrix.com"
     _NEW_API = "cloud.zectrix.com"
     ps = cfg.get("push_settings", {})
@@ -310,15 +344,6 @@ def _apply_env_overrides(cfg):
     for d in cfg.get("devices", []):
         if _OLD_API in d.get("api_base", ""):
             d["api_base"] = d["api_base"].replace(_OLD_API, _NEW_API)
-
-    # 日志
-    if env.get("LOG_LEVEL"):
-        cfg.setdefault("logging", {})["level"] = env["LOG_LEVEL"]
-
-    # 规则过滤
-    if env.get("FILTER_ENABLED"):
-        val = env["FILTER_ENABLED"].lower()
-        cfg.setdefault("filter_rules", {})["enabled"] = val in ("true", "1", "yes")
 
 
 def _auto_detect(cfg):
@@ -329,6 +354,60 @@ def _auto_detect(cfg):
         detected = os.cpu_count() or 4
         auto_threads = max(2, detected - 2) if detected > 4 else detected
         cfg.setdefault("ollama", {})["num_thread"] = auto_threads
+
+
+def _is_in_docker():
+    """检测是否在 Docker 容器中运行"""
+    if os.path.exists("/.dockerenv"):
+        return True
+    try:
+        with open("/proc/1/cgroup", "r", encoding="utf-8") as f:
+            content = f.read()
+            if "docker" in content or "containerd" in content:
+                return True
+    except (OSError, IOError):
+        pass
+    return False
+
+
+def _fix_docker_paths(cfg):
+    """非 Docker 环境下，将 Docker 风格路径自动修正为本地路径
+
+    仅匹配 Docker 默认路径前缀（/data、/photos、/app/），
+    避免误改用户自定义路径；/data/ 下的自定义文件名会保留。
+    """
+    if _is_in_docker():
+        return
+
+    data_dir = str(SCRIPT_DIR / "data")
+    paths = cfg.get("paths", {})
+
+    if paths.get("project_dir") == "/data":
+        paths["project_dir"] = data_dir
+
+    for key in ("index_file", "score_db", "shown_file", "output_file"):
+        current = str(paths.get(key, ""))
+        if current.startswith("/data/") and len(current) > len("/data/"):
+            paths[key] = f"{data_dir}/{current.split('/')[-1]}"
+
+    font = str(paths.get("font_file", ""))
+    if font.startswith("/app/") and len(font) > len("/app/"):
+        paths["font_file"] = str(SCRIPT_DIR / font.split("/")[-1])
+
+    # photo_dir: Docker 默认 /photos，本地不存在时尝试常见目录
+    photo_dir = str(paths.get("photo_dir", "")).rstrip("/")
+    if photo_dir == "/photos" and not Path("/photos").exists():
+        candidates = [
+            str(SCRIPT_DIR / "photos"),
+            str(Path.home() / "Pictures"),
+            str(Path.home() / "photos"),
+        ]
+        for c in candidates:
+            if Path(c).exists():
+                paths["photo_dir"] = c
+                break
+
+    cfg["paths"] = paths
 
 
 def get_db_schema_ddl():

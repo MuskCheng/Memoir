@@ -554,10 +554,6 @@ def api_update_config():
                 "dither": True,
             }]
 
-        # 确保环境变量覆盖和自动迁移生效
-        from config_module import _apply_env_overrides
-        _apply_env_overrides(cfg)
-
         _save_config(cfg)
         return jsonify({"success": True, "message": "配置已保存"})
     except Exception as e:
