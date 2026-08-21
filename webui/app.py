@@ -113,28 +113,24 @@ def load_config():
 def get_db_stats():
     if not DB_PATH.exists():
         return {"total": 0, "done": 0, "pending": 0, "error": 0}
+    stats = {"total": 0, "done": 0, "pending": 0, "error": 0}
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        cur = conn.cursor()
-        cur.execute("SELECT vlm_done, COUNT(*) FROM photo_scores GROUP BY vlm_done")
-        rows = cur.fetchall()
-        conn.close()
-        stats = {"total": 0, "done": 0, "pending": 0, "error": 0}
-        for done, cnt in rows:
-            stats["total"] += cnt
-            if done == 1:
-                stats["done"] = cnt
-            elif done == 0:
-                stats["pending"] = cnt
-        # 统计错误
+        conn = sqlite3.connect(str(DB_PATH), timeout=10)
         try:
-            conn = sqlite3.connect(str(DB_PATH))
             cur = conn.cursor()
+            cur.execute("SELECT vlm_done, COUNT(*) FROM photo_scores GROUP BY vlm_done")
+            rows = cur.fetchall()
+            for done, cnt in rows:
+                stats["total"] += cnt
+                if done == 1:
+                    stats["done"] = cnt
+                elif done == 0:
+                    stats["pending"] = cnt
+            # 统计错误
             cur.execute("SELECT COUNT(*) FROM photo_scores WHERE vlm_error IS NOT NULL")
             stats["error"] = cur.fetchone()[0]
+        finally:
             conn.close()
-        except Exception:
-            pass
         return stats
     except Exception:
         return {"total": 0, "done": 0, "pending": 0, "error": 0}
@@ -607,6 +603,9 @@ def api_run_action(action):
     if action in ("score_full", "score_auto", "score_run", "retry", "build_index"):
         if process_mgr.running:
             return jsonify({"success": False, "error": "已有任务正在运行，请等待或先停止"}), 409
+        from webui.scheduler import is_scheduler_busy
+        if is_scheduler_busy():
+            return jsonify({"success": False, "error": "定时任务正在执行中，请等待其完成后再手动操作"}), 409
         return jsonify(process_mgr.start(action, allowed_async[action]))
     
     # 短操作 → 同步执行
@@ -825,23 +824,24 @@ def api_scored_photos():
         order_by = sort_map.get(sort, "scored_at DESC")
         
         # ── 查询总数 ────────────────────────────────────────
-        total = conn.execute(
-            f"SELECT COUNT(*) FROM photo_scores WHERE {where_sql}", params
-        ).fetchone()[0]
-        
-        # ── 查询数据 ────────────────────────────────────────
-        rows = conn.execute(
-            f"SELECT * FROM photo_scores WHERE {where_sql} ORDER BY {order_by} LIMIT ? OFFSET ?",
-            params + [limit, offset]
-        ).fetchall()
-        
-        # ── 可用场景列表（供前端下拉使用） ───────────────────
-        scenes_raw = conn.execute(
-            "SELECT DISTINCT vlm_scene FROM photo_scores WHERE vlm_done = 1 AND vlm_scene IS NOT NULL AND vlm_scene != '' ORDER BY vlm_scene"
-        ).fetchall()
+        try:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM photo_scores WHERE {where_sql}", params
+            ).fetchone()[0]
+
+            # ── 查询数据 ────────────────────────────────────────
+            rows = conn.execute(
+                f"SELECT * FROM photo_scores WHERE {where_sql} ORDER BY {order_by} LIMIT ? OFFSET ?",
+                params + [limit, offset]
+            ).fetchall()
+
+            # ── 可用场景列表（供前端下拉使用） ───────────────────
+            scenes_raw = conn.execute(
+                "SELECT DISTINCT vlm_scene FROM photo_scores WHERE vlm_done = 1 AND vlm_scene IS NOT NULL AND vlm_scene != '' ORDER BY vlm_scene"
+            ).fetchall()
+        finally:
+            conn.close()
         scenes = [r[0] for r in scenes_raw]
-        
-        conn.close()
         
         photos = []
         for r in rows:
@@ -1161,6 +1161,8 @@ if __name__ == "__main__":
         print(f"   已创建 {len(default_tasks)} 个定时任务")
 
     # 启动调度器（BackgroundScheduler 需在 __main__ 中启动）
+    # 定时任务与手动任务互斥：调度器触发前检查手动任务状态
+    scheduler.set_busy_checker(lambda: process_mgr.running)
     scheduler.start()
 
     port = int(os.environ.get("WEBUI_PORT", 5000))

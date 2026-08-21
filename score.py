@@ -81,10 +81,14 @@ class ScoreDB:
     """评分数据库管理类（支持哈希去重 + 断点续传）"""
     
     def __init__(self, db_path=None):
-        self.db_path = db_path or CFG.get("paths", {}).get("score_db", 
+        self.db_path = db_path or CFG.get("paths", {}).get("score_db",
                                                           SCRIPT_DIR / "zectrix_scores.sqlite")
         self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
+        # WAL 模式：读写互不阻塞（WebUI 轮询统计不会卡死评分提交）
+        # busy_timeout：偶发锁竞争时等待而非立刻报错
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA busy_timeout=30000")
         self._init_tables()
         log.info(f"数据库已连接: {self.db_path}")
     
@@ -653,7 +657,11 @@ def process_pending(db: ScoreDB, limit=None):
         # 批量提交
         default_processing = DEFAULT_CONFIG.get("processing", {})
         if (i + 1) % CFG.get("processing", {}).get("batch_save_interval", default_processing.get("batch_save_interval", 10)) == 0:
-            db.commit()
+            # 提交失败不允许炸掉整个任务（WAL+逐张提交下极少发生）
+            try:
+                db.commit()
+            except sqlite3.OperationalError as e:
+                log.warning(f"  ⚠️ 批量提交失败（已逐张提交兜底）: {e}")
             if times and CFG.get("processing", {}).get("enable_progress_estimate", default_processing.get("enable_progress_estimate", True)):
                 avg = sum(times) / len(times)
                 remaining = (total - i - 1) * avg

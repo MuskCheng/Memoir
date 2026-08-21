@@ -12,6 +12,7 @@ import json
 import subprocess
 import logging
 import time
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -27,6 +28,27 @@ TASKS_FILE = Path(os.environ.get("DATA_DIR", SCRIPT_DIR / "data")) / "scheduled_
 log = logging.getLogger("scheduler")
 
 PYTHON_EXE = sys.executable
+
+# ─── 长任务与并发互斥 ──────────────────────────────────────────
+# 评分类任务可能持续数十小时，绝不能套用短超时（此前 600s 硬超时
+# 会把进行中的评分强杀，表现为"跑一段时间就自动停止"）
+LONG_ACTIONS = {"score_trial", "score_auto", "score_full", "score_run", "retry", "build_index", "export"}
+QUICK_TIMEOUT = 600  # 快速操作超时（秒）
+
+# 全局互斥：同一时间只允许一个任务写入 SQLite（评分库不支持多写者并发）
+_task_lock = threading.Lock()
+_busy_checker = None  # 由 app.py 注入，用于检查手动任务是否正在运行
+
+
+def set_busy_checker(fn):
+    """注册手动任务运行状态检查回调（app.py 初始化时调用）"""
+    global _busy_checker
+    _busy_checker = fn
+
+
+def is_scheduler_busy():
+    """是否有定时任务正在执行"""
+    return _task_lock.locked()
 
 # ─── 任务定义 ──────────────────────────────────────────────────
 ACTION_MAP = {
@@ -135,15 +157,25 @@ def _exec_action(action_id, device=""):
     
     label = ACTION_LABELS.get(action_id, action_id)
     log.info(f"🔄 [定时任务] 执行: {label}" + (f" -> {device}" if device else ""))
-    
+
+    # 互斥检查：手动任务或其他定时任务正在运行时跳过本次触发
+    if _busy_checker and _busy_checker():
+        log.warning(f"⏭️ [定时任务] 手动任务正在运行，跳过本次: {label}")
+        return False
+    if not _task_lock.acquire(blocking=False):
+        log.warning(f"⏭️ [定时任务] 上一次定时任务尚未结束，跳过本次: {label}")
+        return False
+
     try:
+        # 评分类长任务不设超时；快速操作保留 10 分钟保护
+        timeout = None if action_id in LONG_ACTIONS else QUICK_TIMEOUT
         result = subprocess.run(
             cmd,
             cwd=str(SCRIPT_DIR),
             capture_output=True,
             text=True,
             encoding="utf-8",
-            timeout=600,
+            timeout=timeout,
             env={**os.environ, "PYTHONIOENCODING": "utf-8"}
         )
         if result.returncode == 0:
@@ -158,11 +190,13 @@ def _exec_action(action_id, device=""):
                 log.error(f"  {result.stderr.strip()[-200:]}")
             return False
     except subprocess.TimeoutExpired:
-        log.error(f"⏰ [定时任务] {label} 超时")
+        log.error(f"⏰ [定时任务] {label} 超时（{QUICK_TIMEOUT}秒）")
         return False
     except Exception as e:
         log.error(f"💥 [定时任务] {label} 异常: {e}")
         return False
+    finally:
+        _task_lock.release()
 
 
 # ─── 调度器管理 ────────────────────────────────────────────────
