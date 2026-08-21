@@ -608,6 +608,11 @@ def process_pending(db: ScoreDB, limit=None):
             break
         
         path = row["file_path"]
+        # DB 中存储的是相对于 photo_dir 的路径（跨平台统一格式），
+        # 打开文件前必须拼回完整路径，否则按进程 CWD 解析会找不到文件
+        if path and not os.path.isabs(path):
+            path = os.path.normpath(os.path.join(
+                CFG.get("paths", {}).get("photo_dir", ""), path))
         fhash = row["file_hash"]
         fname = row["file_name"]
         
