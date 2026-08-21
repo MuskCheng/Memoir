@@ -208,6 +208,14 @@ class TaskScheduler:
         self.scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
         self.running = False
     
+    def set_busy_checker(self, fn):
+        """注册手动任务运行状态检查回调（委托模块级实现）"""
+        set_busy_checker(fn)
+    
+    def is_busy(self):
+        """是否有定时任务正在执行"""
+        return is_scheduler_busy()
+    
     def _make_job_id(self, task):
         """生成 APScheduler job ID"""
         return f"task_{task['id']}"
