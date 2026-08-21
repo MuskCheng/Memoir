@@ -54,30 +54,6 @@ docker compose exec ollama ollama pull qwen2.5vl:7b
 
 > **有 NVIDIA GPU？** 编辑 `docker-compose.yml`，取消 Ollama 服务中 `deploy` 部分的注释，安装 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) 后重启。
 
-### Windows 本地运行
-
-```powershell
-# 1. 安装 Ollama + 拉取模型
-ollama pull qwen2.5vl:7b
-
-# 2. 安装依赖
-pip install -r requirements.txt
-
-# 3. 下载水印字体到项目根目录（中文显示必需）
-curl -L -o ark-pixel-12px-monospaced-zh_cn.ttf `
-  https://github.com/TakWolf/ark-pixel-font/releases/download/2024.11.04/ark-pixel-12px-monospaced-zh_cn.ttf
-
-# 4. 首次运行自动生成配置，也可通过环境变量覆盖：
-#    $env:PHOTO_DIR="你存放照片的文件夹"
-#    或编辑自动生成的 config.json 中的路径为 Windows 风格
-
-# 5. 启动 Web 管理面板
-.\start_webui.ps1
-# 或: python webui\app.py
-```
-
-打开浏览器访问 **http://localhost:5000**。
-
 ---
 
 ## 🌐 浏览器管理（主推操作方式）
@@ -195,53 +171,6 @@ memoir/
 
 ---
 
-## 🟩 Windows 本地运行
-
-### 环境安装
-
-**1. 安装 Ollama**
-
-从 [ollama.com/download](https://ollama.com/download) 下载安装包，安装后：
-
-```powershell
-ollama pull qwen2.5vl:7b   # 拉取模型（约 4.7GB）
-ollama list                 # 确认已就绪
-```
-
-> Ollama 安装后默认开机自启，无需手动启动。
-
-**2. 安装 Python**
-
-从 [python.org](https://www.python.org/downloads/) 下载 Python 3.12，安装时**勾选**「Add Python to PATH」。
-
-```powershell
-python --version
-pip --version
-```
-
-**3. 安装依赖**
-
-```powershell
-cd memoir
-pip install -r requirements.txt
-```
-
-### 启动 Web 管理面板
-
-```powershell
-# 方式一：一键脚本（推荐）
-.\start_webui.ps1
-
-# 方式二：手动
-python webui\app.py
-```
-
-浏览器打开 **http://localhost:5000**，首次启动会自动弹出设置向导。
-
-> 如果端口 5000 被占用：`$env:WEBUI_PORT=8080; python webui\app.py`
-
----
-
 ## ⚙️ 配置指南
 
 配置文件首次运行自动生成，也可以在 Web UI「⚙️ 配置」页面在线编辑。
@@ -282,7 +211,7 @@ python webui\app.py
 python score.py auto --build-index --push
 
 # 建立索引
-python build_index.py /photos -o /data/index.txt
+python score.py index /photos -o /data/index.txt
 
 # 全量评分
 python score.py auto
@@ -312,18 +241,15 @@ python score.py retry
 
 ```
 memoir/
-├── start_webui.ps1          # Windows 一键启动脚本
-├── score.py                 # AI 评分引擎
+├── score.py                 # AI 评分引擎 + 索引构建（score.py index）
 ├── push.py                  # 选片 + 推送
 ├── filter.py                # 规则过滤
-├── build_index.py           # 照片扫描
-├── config_module.py         # 统一配置模块
-├── env_detect.py            # 环境自动检测
+├── config_module.py         # 统一配置模块 + 路径工具
 ├── Dockerfile               # Docker 构建
 ├── docker-compose.yml       # Docker 编排
 ├── webui/                   # 🌐 Web 管理面板（主推入口）
 │   ├── app.py               #   Flask 后端
-│   ├── health.py             #   启动自检
+│   ├── health.py             #   启动自检 + 环境检测
 │   ├── scheduler.py          #   定时任务
 │   └── templates/index.html  #   单页管理界面
 └── docs/

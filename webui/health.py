@@ -8,6 +8,7 @@
 import os
 import sys
 import json
+import platform
 import subprocess
 import shutil
 import time
@@ -28,12 +29,228 @@ from config_module import (
 
 log = logging.getLogger("health")
 
+# ─── 环境自动检测（原 env_detect.py，仅保留实际使用的函数） ────
+
+def detect_environment():
+    """检测运行环境基本信息（OS/Docker/CPU/GPU）"""
+    current_os = sys.platform
+    os_version = platform.platform()
+
+    in_docker = False
+    if current_os == "linux":
+        if os.path.exists("/.dockerenv"):
+            in_docker = True
+        elif os.environ.get("DOCKER_CONTAINER") == "true":
+            in_docker = True
+        else:
+            try:
+                with open("/proc/1/cgroup", "r", encoding="utf-8") as f:
+                    content = f.read()
+                    if "docker" in content or "containerd" in content:
+                        in_docker = True
+            except (OSError, IOError):
+                pass
+
+    cpu_count = os.cpu_count() or 4
+    cpu_threads_auto = max(2, cpu_count - 2) if cpu_count > 4 else cpu_count
+
+    has_gpu = False
+    gpu_info = ""
+    nvidia_smi_path = shutil.which("nvidia-smi")
+    if not nvidia_smi_path and current_os == "win32":
+        win_candidates = [
+            r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe",
+            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.7\bin\nvidia-smi.exe",
+            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin\nvidia-smi.exe",
+            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5\bin\nvidia-smi.exe",
+            r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1\bin\nvidia-smi.exe",
+        ]
+        for c in win_candidates:
+            if os.path.exists(c):
+                nvidia_smi_path = c
+                break
+
+    if nvidia_smi_path:
+        try:
+            result = subprocess.run(
+                [nvidia_smi_path, "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                has_gpu = True
+                gpu_info = result.stdout.strip().split("\n")[0]
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+    elif os.environ.get("CUDA_VISIBLE_DEVICES"):
+        has_gpu = True
+        gpu_info = f"CUDA_VISIBLE_DEVICES={os.environ['CUDA_VISIBLE_DEVICES']}"
+
+    return {
+        "os": current_os,
+        "os_version": os_version,
+        "in_docker": in_docker,
+        "python_version": platform.python_version(),
+        "python_executable": sys.executable,
+        "cpu_count": cpu_count,
+        "cpu_threads_auto": cpu_threads_auto,
+        "architecture": platform.machine(),
+        "has_gpu": has_gpu,
+        "gpu_info": gpu_info,
+    }
+
+
+def detect_ollama(base_url=None):
+    """检测 Ollama 服务状态（版本/模型/加载状态/GPU）"""
+    if base_url is None:
+        base_url = "http://localhost:11434"
+
+    result = {
+        "running": False, "reachable": False, "version": "",
+        "models": [], "model_loaded": False, "has_gpu": False, "gpu_info": "",
+    }
+
+    try:
+        import requests
+        resp = requests.get(f"{base_url}/api/version", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            result["version"] = data.get("version", "")
+            result["running"] = True
+            result["reachable"] = True
+        else:
+            return result
+    except Exception:
+        return result
+
+    try:
+        resp = requests.get(f"{base_url}/api/tags", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            models = [m.get("name", "") for m in data.get("models", [])]
+            result["models"] = models
+            running = [m for m in data.get("models", []) if m.get("size", 0) > 0]
+            if running:
+                result["model_loaded"] = True
+    except Exception:
+        pass
+
+    try:
+        resp = requests.get(f"{base_url}/api/ps", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("models"):
+                result["has_gpu"] = True
+                for m in data["models"]:
+                    if m.get("gpu", {}).get("name"):
+                        result["gpu_info"] = m["gpu"]["name"]
+                        break
+    except Exception:
+        pass
+
+    return result
+
+
+def detect_paths(env_info=None):
+    """自动发现可用路径（相册目录/数据目录/字体文件）"""
+    if env_info is None:
+        env_info = detect_environment()
+
+    result = {
+        "photo_dir": "",
+        "project_dir": "",
+        "font_file": "",
+        "photo_candidates": [],
+    }
+
+    if env_info["in_docker"]:
+        result["project_dir"] = "/data"
+        photo_candidates = ["/photos"]
+    elif env_info["os"] == "win32":
+        user_home = Path(os.environ.get("USERPROFILE", Path.home()))
+        result["project_dir"] = str(_project_root / "data")
+        photo_candidates = [
+            str(user_home / "Photos"),
+            str(user_home / "Pictures"),
+            "D:\\Photos",
+            "D:\\Pictures",
+            "E:\\Photos",
+            "E:\\Pictures",
+        ]
+    else:
+        user_home = Path.home()
+        result["project_dir"] = str(_project_root / "data")
+        photo_candidates = [
+            str(user_home / "Photos"),
+            str(user_home / "Pictures"),
+            str(user_home / "photos"),
+            "/photos",
+        ]
+
+    existing = [p for p in photo_candidates if os.path.isdir(p)]
+    result["photo_candidates"] = existing
+    if existing:
+        result["photo_dir"] = existing[0]
+
+    font_candidates = [
+        _project_root / "ark-pixel-12px-monospaced-zh_cn.ttf",
+        _project_root / "data" / "ark-pixel-12px-monospaced-zh_cn.ttf",
+    ]
+    if env_info["in_docker"]:
+        font_candidates.insert(0, Path("/app/ark-pixel-12px-monospaced-zh_cn.ttf"))
+    for fc in font_candidates:
+        if fc.exists():
+            result["font_file"] = str(fc)
+            break
+
+    return result
+
+
+def generate_smart_config(env_info=None, paths_info=None):
+    """基于环境检测结果生成智能配置（首次运行用）"""
+    import copy
+    cfg = copy.deepcopy(DEFAULT_CONFIG)
+
+    if env_info is None:
+        try:
+            env_info = detect_environment()
+        except Exception:
+            env_info = {}
+
+    if paths_info is None:
+        try:
+            paths_info = detect_paths(env_info)
+        except Exception:
+            paths_info = {}
+
+    if paths_info.get("project_dir"):
+        cfg["paths"]["project_dir"] = paths_info["project_dir"]
+        pd = paths_info["project_dir"]
+        cfg["paths"]["index_file"] = f"{pd}/zectrix_photo_index.txt"
+        cfg["paths"]["score_db"] = f"{pd}/zectrix_scores.sqlite"
+        cfg["paths"]["shown_file"] = f"{pd}/zectrix_shown.txt"
+        cfg["paths"]["output_file"] = f"{pd}/zectrix_today.jpg"
+
+    if paths_info.get("photo_dir"):
+        cfg["paths"]["photo_dir"] = paths_info["photo_dir"]
+
+    if paths_info.get("font_file"):
+        cfg["paths"]["font_file"] = paths_info["font_file"]
+
+    if env_info.get("cpu_threads_auto"):
+        cfg["ollama"]["num_thread"] = env_info["cpu_threads_auto"]
+
+    if env_info.get("in_docker"):
+        cfg["ollama"]["base_url"] = os.environ.get(
+            "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
+        )
+
+    return cfg
+
 def ensure_config():
     """确保配置文件存在，不存在则基于环境检测生成智能配置"""
     if not CONFIG_FILE.exists():
         log.info("📝 首次运行，基于环境检测生成配置")
         try:
-            from config_module import generate_smart_config
             cfg = generate_smart_config()
         except Exception:
             import copy
@@ -294,8 +511,8 @@ def ensure_index(cfg):
     
     log.info(f"  📝 自动建立索引: {photo_dir}")
     try:
-        from build_index import scan_photos
-        # scan_photos 只收录含 EXIF 相机信息的照片（真实相机拍摄）
+        from score import disk_scan as scan_photos
+        # disk_scan 收录 Pillow 能打开的真实照片，日期优先 EXIF
         records = scan_photos(str(photo_dir))
         if records:
             index_file.parent.mkdir(parents=True, exist_ok=True)
@@ -304,8 +521,8 @@ def ensure_index(cfg):
             log.info(f"  ✅ 索引完成: {len(records)} 张")
             return True
         else:
-            log.warning(f"  ⚠️ 未找到有效照片（需含 EXIF 相机信息）")
-            log.warning(f"     建议手动建立: python build_index.py \"{photo_dir}\" -o \"{index_file}\"")
+            log.warning(f"  ⚠️ 未找到有效照片")
+            log.warning(f"     建议手动建立: python score.py index \"{photo_dir}\" -o \"{index_file}\"")
             return False
     except Exception as e:
         log.error(f"  ❌ 索引失败: {e}")
@@ -337,7 +554,6 @@ def run_health_check(cfg=None, auto_fix=True):
 
     # 环境检测
     try:
-        from env_detect import detect_environment, detect_ollama, detect_paths
         env_info = detect_environment()
         paths_info = detect_paths(env_info)
     except Exception:

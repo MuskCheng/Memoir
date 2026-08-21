@@ -364,7 +364,7 @@ class ProcessManager:
             cfg = _load_config_full(auto_create=False)
             photo_dir = cfg.get("paths", {}).get("photo_dir", "")
             index_file = cfg.get("paths", {}).get("index_file", "")
-            cmd = [sys.executable, "build_index.py", photo_dir, "-o", index_file]
+            cmd = [sys.executable, "score.py", "index", photo_dir, "-o", index_file]
         elif cmd is None and action == "export":
             export_file = str(SCRIPT_DIR / "data" / "export.jsonl")
             cmd = [sys.executable, "score.py", "export", "-o", export_file]

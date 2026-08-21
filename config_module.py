@@ -39,6 +39,60 @@ def get_version():
     except Exception:
         return "1.0"
 
+
+# ─── 路径工具（score.py / push.py 共用，唯一实现） ─────────────
+
+def normalize_path(path):
+    """标准化路径为正斜杠格式（统一分隔符）"""
+    return path.replace('\\', '/')
+
+
+def convert_host_path(file_path):
+    """将宿主机路径转换为容器内路径（Docker 环境）
+
+    Windows 盘符路径 D:/photos/xxx → $PHOTO_DIR/xxx
+    """
+    import re
+    m = re.match(r'^([A-Za-z]):[/\\](.+)$', file_path)
+    if m:
+        relative_path = m.group(2).replace('\\', '/')
+        container_photo_dir = os.environ.get("PHOTO_DIR", "/photos")
+        return f"{container_photo_dir}/{relative_path}"
+    return file_path
+
+
+def to_relative(file_path, photo_dir):
+    """将绝对路径转换为相对于 photo_dir 的相对路径。
+
+    确保不同环境（Windows/NAS）下同一张照片产生相同的相对路径。
+    - NAS:  /photos/work/vacation/img.jpg → work/vacation/img.jpg
+    - Win:  Z:/home/work/vacation/img.jpg → work/vacation/img.jpg
+    """
+    import re
+    norm = normalize_path(file_path)
+    photo = normalize_path(photo_dir).rstrip('/')
+
+    # 1. 直接前缀: /photos/vacation/img.jpg
+    if norm.startswith(photo + '/'):
+        return norm[len(photo) + 1:]
+
+    # 2. Windows 盘符: Z:/home/vacation/img.jpg
+    m = re.match(r'^[A-Za-z]:/(.+)$', norm)
+    if m:
+        after_drive = m.group(1)
+        # 优先匹配 photo_dir basename（如 /photos → photos）
+        photo_base = photo.rsplit('/', 1)[-1] if '/' in photo else photo
+        if after_drive.startswith(photo_base + '/'):
+            return after_drive[len(photo_base) + 1:]
+        # 去掉第一级目录（Windows 照片目录的 basename，如 home）
+        parts = after_drive.split('/', 1)
+        if len(parts) > 1:
+            return parts[1]
+        return after_drive
+
+    # 3. 兜底: 返回原路径
+    return norm
+
 # ─── 数据库 Canonical DDL ──────────────────────────────────────
 # photo_scores 表的唯一建表语句，score.py 和 health.py 共享
 DB_SCHEMA_DDL = """
@@ -422,62 +476,6 @@ def _fix_docker_paths(cfg):
 def get_db_schema_ddl():
     """返回 photo_scores 表的 canonical DDL"""
     return DB_SCHEMA_DDL
-
-
-def generate_smart_config(env_info=None, paths_info=None):
-    """
-    基于环境检测结果生成智能配置。
-
-    Args:
-        env_info: detect_environment() 返回值（None 则自动调用）
-        paths_info: detect_paths() 返回值（None 则自动调用）
-
-    Returns:
-        dict: 完整的配置字典
-    """
-    import copy
-    cfg = copy.deepcopy(DEFAULT_CONFIG)
-
-    if env_info is None:
-        try:
-            from env_detect import detect_environment
-            env_info = detect_environment()
-        except Exception:
-            env_info = {}
-
-    if paths_info is None:
-        try:
-            from env_detect import detect_paths
-            paths_info = detect_paths(env_info)
-        except Exception:
-            paths_info = {}
-
-    # 自动设置路径
-    if paths_info.get("project_dir"):
-        cfg["paths"]["project_dir"] = paths_info["project_dir"]
-        pd = paths_info["project_dir"]
-        cfg["paths"]["index_file"] = f"{pd}/zectrix_photo_index.txt"
-        cfg["paths"]["score_db"] = f"{pd}/zectrix_scores.sqlite"
-        cfg["paths"]["shown_file"] = f"{pd}/zectrix_shown.txt"
-        cfg["paths"]["output_file"] = f"{pd}/zectrix_today.jpg"
-
-    if paths_info.get("photo_dir"):
-        cfg["paths"]["photo_dir"] = paths_info["photo_dir"]
-
-    if paths_info.get("font_file"):
-        cfg["paths"]["font_file"] = paths_info["font_file"]
-
-    # 自动设置 CPU 线程
-    if env_info.get("cpu_threads_auto"):
-        cfg["ollama"]["num_thread"] = env_info["cpu_threads_auto"]
-
-    # Docker 环境：Ollama 默认指向宿主机
-    if env_info.get("in_docker"):
-        cfg["ollama"]["base_url"] = os.environ.get(
-            "OLLAMA_BASE_URL", "http://host.docker.internal:11434"
-        )
-
-    return cfg
 
 
 def save_config(cfg, config_file=None):

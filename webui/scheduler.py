@@ -139,7 +139,7 @@ def _exec_action(action_id, device=""):
             cfg = _load_cfg(auto_create=False)
             photo_dir = cfg.get("paths", {}).get("photo_dir", "")
             index_file = cfg.get("paths", {}).get("index_file", "")
-            cmd = [PYTHON_EXE, "build_index.py", photo_dir, "-o", index_file]
+            cmd = [PYTHON_EXE, "score.py", "index", photo_dir, "-o", index_file]
         except Exception as e:
             log.error(f"构建 build_index 命令失败: {e}")
             return False

@@ -29,7 +29,8 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # ─── 配置加载 ────────────────────────────────────────────────────
-from config_module import load_config, SCRIPT_DIR, CONFIG_FILE
+from config_module import load_config, SCRIPT_DIR, CONFIG_FILE, \
+    normalize_path as _normalize_path, convert_host_path as _convert_host_path, to_relative as _to_relative
 
 CFG = load_config()
 
@@ -245,51 +246,8 @@ def pick_by_weighted_scores(candidates_by_year, shown_set, score_map):
     return last[0], last[1]
 
 # ─── 加载索引文件 ────────────────────────────────────────────────
-def _normalize_path(path):
-    """标准化路径为正斜杠格式（统一分隔符）"""
-    return path.replace('\\', '/')
-
-def _convert_host_path(file_path):
-    """将宿主机路径转换为容器内路径（Docker 环境）"""
-    import re
-    m = re.match(r'^([A-Za-z]):[/\\](.+)$', file_path)
-    if m:
-        relative_path = m.group(2).replace('\\', '/')
-        container_photo_dir = os.environ.get("PHOTO_DIR", "/photos")
-        return f"{container_photo_dir}/{relative_path}"
-    return file_path
-
-def _to_relative(file_path, photo_dir):
-    """将绝对路径转换为相对于 photo_dir 的相对路径。
-
-    确保不同环境（Windows/NAS）下同一张照片产生相同的相对路径。
-    - NAS:  /photos/work/vacation/img.jpg → work/vacation/img.jpg
-    - Win:  Z:/home/work/vacation/img.jpg → work/vacation/img.jpg
-    """
-    import re
-    norm = _normalize_path(file_path)
-    photo = _normalize_path(photo_dir).rstrip('/')
-
-    # 1. 直接前缀: /photos/vacation/img.jpg
-    if norm.startswith(photo + '/'):
-        return norm[len(photo) + 1:]
-
-    # 2. Windows 盘符: Z:/home/vacation/img.jpg
-    m = re.match(r'^[A-Za-z]:/(.+)$', norm)
-    if m:
-        after_drive = m.group(1)
-        # 优先匹配 photo_dir basename（如 /photos → photos）
-        photo_base = photo.rsplit('/', 1)[-1] if '/' in photo else photo
-        if after_drive.startswith(photo_base + '/'):
-            return after_drive[len(photo_base) + 1:]
-        # 去掉第一级目录（Windows 照片目录的 basename，如 home）
-        parts = after_drive.split('/', 1)
-        if len(parts) > 1:
-            return parts[1]
-        return after_drive
-
-    # 3. 兜底: 返回原路径
-    return norm
+# 路径工具函数（_normalize_path/_convert_host_path/_to_relative）
+# 已统一移至 config_module，此处直接导入使用
 
 def load_index(index_file):
     """加载索引文件，按年份分组，返回 {year: [(file_path, shoot_date), ...]}"""

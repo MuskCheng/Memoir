@@ -27,7 +27,7 @@ import io
 import requests
 from pathlib import Path
 from datetime import datetime
-from PIL import Image
+from PIL import Image, ExifTags
 
 # ─── Windows UTF-8 强制输出 ───────────────────────────────────────
 if sys.platform == "win32":
@@ -35,7 +35,8 @@ if sys.platform == "win32":
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # ─── 配置加载 ────────────────────────────────────────────────────
-from config_module import load_config, SCRIPT_DIR, CONFIG_FILE, get_db_schema_ddl, DEFAULT_CONFIG
+from config_module import load_config, SCRIPT_DIR, CONFIG_FILE, get_db_schema_ddl, DEFAULT_CONFIG, \
+    normalize_path as _normalize_path, convert_host_path as _convert_host_path, to_relative as _to_relative
 
 CFG = load_config()
 
@@ -438,52 +439,99 @@ def parse_json_response(raw):
             pass
     return None
 
-# ─── 文件扫描 ─────────────────────────────────────────────────────
-def _normalize_path(path):
-    """标准化路径为正斜杠格式（统一分隔符）"""
-    return path.replace('\\', '/')
+# ─── 磁盘扫描（原 build_index.py，索引构建唯一实现） ───────────
 
-def _convert_host_path(file_path):
-    """将宿主机路径转换为容器内路径（Docker 环境）"""
-    import re
-    m = re.match(r'^([A-Za-z]):[/\\](.+)$', file_path)
-    if m:
-        relative_path = m.group(2).replace('\\', '/')
-        container_photo_dir = os.environ.get("PHOTO_DIR", "/photos")
-        return f"{container_photo_dir}/{relative_path}"
-    return file_path
-
-def _to_relative(file_path, photo_dir):
-    """将绝对路径转换为相对于 photo_dir 的相对路径。
-
-    确保不同环境（Windows/NAS）下同一张照片产生相同的相对路径。
-    - NAS:  /photos/work/vacation/img.jpg → work/vacation/img.jpg
-    - Win:  Z:/home/work/vacation/img.jpg → work/vacation/img.jpg
+def get_photo_info(image_path):
     """
-    import re
-    norm = _normalize_path(file_path)
-    photo = _normalize_path(photo_dir).rstrip('/')
+    判断是否为有效照片，提取拍摄日期。
+    放宽策略：只要 Pillow 能打开就收录，日期优先 EXIF，其次文件修改时间。
+    """
+    try:
+        img = Image.open(image_path)
+        img.verify()  # 确认不是损坏文件
 
-    # 1. 直接前缀: /photos/vacation/img.jpg
-    if norm.startswith(photo + '/'):
-        return norm[len(photo) + 1:]
+        # 重新打开（verify 后需要重新打开才能读 EXIF）
+        img = Image.open(image_path)
 
-    # 2. Windows 盘符: Z:/home/vacation/img.jpg
-    m = re.match(r'^[A-Za-z]:/(.+)$', norm)
-    if m:
-        after_drive = m.group(1)
-        # 优先匹配 photo_dir basename（如 /photos → photos）
-        photo_base = photo.rsplit('/', 1)[-1] if '/' in photo else photo
-        if after_drive.startswith(photo_base + '/'):
-            return after_drive[len(photo_base) + 1:]
-        # 去掉第一级目录（Windows 照片目录的 basename，如 home）
-        parts = after_drive.split('/', 1)
-        if len(parts) > 1:
-            return parts[1]
-        return after_drive
+        shoot_date = None
 
-    # 3. 兜底: 返回原路径
-    return norm
+        # 先尝试从 EXIF 获取日期
+        try:
+            exif = img.getexif()
+            for tag_id, value in exif.items():
+                tag_name = ExifTags.TAGS.get(tag_id, tag_id)
+                if tag_name in ('DateTimeOriginal', 'DateTime') and isinstance(value, str):
+                    if len(value) >= 10:
+                        shoot_date = value[:10].replace(':', '-')
+                        break
+        except Exception:
+            pass
+
+        # EXIF 无日期则用文件修改时间
+        if not shoot_date:
+            timestamp = os.path.getmtime(image_path)
+            shoot_date = time.strftime('%Y-%m-%d', time.localtime(timestamp))
+
+        return True, shoot_date
+    except Exception:
+        return False, None
+
+
+def disk_scan(photo_dir, extensions=None):
+    """扫描目录，返回所有真实照片的 "日期|路径" 记录列表"""
+    if extensions is None:
+        extensions = set(CFG.get("photo_extensions", DEFAULT_CONFIG.get("photo_extensions", [])))
+    if not extensions:
+        extensions = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.bmp', '.tiff'}
+
+    exclude_dirs = set(CFG.get("exclude_dirs", DEFAULT_CONFIG.get("exclude_dirs", [])))
+    progress_interval = CFG.get("processing", {}).get("progress_interval", 2000)
+
+    if not os.path.isdir(photo_dir):
+        log.error(f"目录不存在: {photo_dir}")
+        sys.exit(1)
+
+    valid_records = []
+    processed_count = 0
+
+    log.info(f"开始扫描: {photo_dir}")
+
+    root = photo_dir
+    try:
+        for root, dirs, files in os.walk(photo_dir):
+            # 排除系统目录
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                if ext not in extensions:
+                    continue
+
+                processed_count += 1
+                full_path = os.path.join(root, file)
+
+                try:
+                    is_real, p_date = get_photo_info(full_path)
+                except Exception:
+                    continue
+
+                if is_real and p_date:
+                    valid_records.append(f"{p_date}|{full_path.replace(os.sep, '/')}")
+
+                if processed_count % progress_interval == 0:
+                    log.info(f"已处理 {processed_count} 张，收录 {len(valid_records)} 张真实照片...")
+    except PermissionError:
+        log.warning(f"无权限访问目录: {root}，跳过")
+    except OSError as e:
+        log.warning(f"遍历目录出错: {e}，跳过")
+
+    log.info(f"扫描完成: 共处理 {processed_count} 张，收录 {len(valid_records)} 张")
+    return valid_records
+
+
+# ─── 文件扫描 ─────────────────────────────────────────────────────
+# 路径工具函数（_normalize_path/_convert_host_path/_to_relative）
+# 已统一移至 config_module，此处直接导入使用
 
 def scan_photos(index_file, db: ScoreDB):
     """扫描索引文件，发现新照片"""
@@ -833,6 +881,11 @@ def main():
     # 处理命令
     p_run = sub.add_parser("run", help="处理待评分照片")
     p_run.add_argument("--limit", type=int, help="限制处理数量")
+
+    # 索引构建命令
+    p_index = sub.add_parser("index", help="扫描照片目录，生成索引文件")
+    p_index.add_argument("photo_dir", nargs="?", help="照片目录路径（默认使用配置文件中的路径）")
+    p_index.add_argument("-o", "--output", help="输出索引文件路径（默认使用配置文件中的路径）")
     
     # 自动命令（扫描+处理）
     p_auto = sub.add_parser("auto", help="扫描+处理")
@@ -877,7 +930,25 @@ def main():
     db = ScoreDB()
     
     try:
-        if args.command == "scan":
+        if args.command == "index":
+            # 索引构建：无需数据库
+            photo_dir = args.photo_dir or CFG.get("paths", {}).get("photo_dir", "")
+            if not photo_dir:
+                log.error("未指定照片目录，请通过命令行参数或配置文件指定")
+                sys.exit(1)
+            output_file = args.output or CFG.get("paths", {}).get("index_file", "")
+            records = disk_scan(str(photo_dir))
+            if output_file:
+                out_dir = os.path.dirname(output_file)
+                if out_dir:
+                    os.makedirs(out_dir, exist_ok=True)
+                with open(output_file, "w", encoding="utf-8") as f:
+                    f.write("\n".join(records) + "\n")
+                log.info(f"索引已写入: {output_file}（共 {len(records)} 条）")
+            else:
+                print("\n".join(records))
+            return
+        elif args.command == "scan":
             index_file = args.index or CFG.get("paths", {}).get("index_file")
             scan_photos(index_file, db)
         elif args.command == "run":
@@ -887,7 +958,6 @@ def main():
             
             # 可选：先建立/更新索引（扫描磁盘，生成索引文件）
             if args.build_index:
-                from build_index import scan_photos as disk_scan
                 photo_dir = CFG.get("paths", {}).get("photo_dir", "")
                 log.info(f"先建立索引: {photo_dir}")
                 try:
