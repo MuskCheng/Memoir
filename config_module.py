@@ -136,9 +136,8 @@ DEFAULT_CONFIG = {
             "qrcode", "二维码", "barcode", "条形码"
         ],
         "exclude_filename_regex": [
-            "^Screenshot_", "^IMG_\\d{8}_\\d{6}", "^screen_", "^PANO_",
-            "^PXL_", "^MVIMG_", "^IMG_\\d{8}_\\d{6}_BURST",
-            "^IMG_\\d{8}_\\d{6}_COVER", "^received_", "^STK_", "^VID_",
+            "^Screenshot_", "^screen_", "^PANO_",
+            "^PXL_", "^MVIMG_", "^IMG_\\d{8}_\\d{6}_COVER", "^received_", "^STK_", "^VID_",
             "^DCIM_", "^Photo_", "^PhotoGrid_", "^Collage_", "^InShot_",
             "^VSCO_", "^Snapseed_", "^PicsArt_", "^BeautyPlus_", "^Meitu_",
             "^B612_", "^SNOW_", "^LINE_", "^WeChat_", "^wx_camera_",
@@ -344,6 +343,16 @@ def _apply_migrations(cfg):
     for d in cfg.get("devices", []):
         if _OLD_API in d.get("api_base", ""):
             d["api_base"] = d["api_base"].replace(_OLD_API, _NEW_API)
+
+    # 迁移：移除误伤真实相机照片的排除正则
+    # IMG_YYYYMMDD_HHMMSS(_BURST) 是小米/三星/谷歌相机的默认命名，不是截图
+    _BAD_REGEXES = {"^IMG_\\d{8}_\\d{6}", "^IMG_\\d{8}_\\d{6}_BURST"}
+    fr = cfg.get("filter_rules", {})
+    regexes = fr.get("exclude_filename_regex")
+    if isinstance(regexes, list):
+        cleaned = [r for r in regexes if r not in _BAD_REGEXES]
+        if len(cleaned) != len(regexes):
+            fr["exclude_filename_regex"] = cleaned
 
 
 def _auto_detect(cfg):
